@@ -1,1 +1,46 @@
-Nothing should be ignored based on the provided file changes. The only added file is a Kotlin source file (.kt), which is source code and should not be ignored. There are no build artifacts, dependencies, or temporary files in the changes that would warrant adding ignore rules.
+```
+# Dependencies
+.gradle/
+node_modules/
+
+# Build artifacts
+build/
+dist/
+target/
+
+# IDE files
+.idea/
+.vscode/
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+
+# Logs
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Gradle
+.gradle/
+gradle-app.setting
+!gradlew
+!gradle/wrapper/gradle-wrapper.jar
+
+# Android specific
+*.apk
+*.aar
+*.so
+```
