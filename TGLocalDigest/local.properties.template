@@ -1,0 +1,14 @@
+# API Credentials (DO NOT COMMIT TO VERSION CONTROL)
+# Get your own at https://my.telegram.org/apps
+API_ID=38843417
+API_HASH=c489fb2c7cd07fba17f67b7c35ad4333
+
+# Test chat ID for development
+CHAT_ID=-1002424956693
+
+# LLM Model path (relative to app/assets or absolute path)
+LLM_MODEL_PATH=qwen2.5-1.5b-instruct-q4_k_m.gguf
+
+# Context window settings
+MAX_CONTEXT_TOKENS=4000
+MAX_MESSAGE_LENGTH=500
