@@ -8,10 +8,10 @@ import java.util.regex.Pattern
 object TextCleaner {
     
     // Паттерн для удаления эмодзи (Unicode ranges)
+    // ВАЖНО: НЕ включаем \u0400-\u04FF (кириллица), иначе удалится весь русский текст!
     private val emojiPattern = Pattern.compile(
         "[" +
             "\u0600-\u06FF" +  // Arabic
-            "\u0400-\u04FF" +  // Cyrillic (оставляем для русского текста)
             "\u2190-\u21FF" +  // Arrows
             "\u2300-\u23FF" +  // Misc Technical
             "\u2460-\u24FF" +  // Enclosed alphanumerics
