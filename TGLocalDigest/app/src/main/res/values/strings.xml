@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TG Local Digest</string>
+    <string name="generate_digest">Сгенерировать сводку</string>
+    <string name="loading">Загрузка...</string>
+    <string name="error_format">Ошибка: %s</string>
+    <string name="no_messages">Нет сообщений за выбранный период</string>
+    <string name="status_resolved">решено ✓</string>
+    <string name="status_unresolved">не решено</string>
+    <string name="status_pending">требует уточнения</string>
+</resources>
