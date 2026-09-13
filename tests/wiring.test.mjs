@@ -159,8 +159,10 @@ test("index.html loads the vendored libraries and the module entry point", async
   assert.match(html, /<script src="\.\/vendor\/telegram-web-app\.js"><\/script>/);
   assert.match(html, /<script type="module" src="\.\/assets\/app\.js"><\/script>/);
   assert.match(html, /<link rel="stylesheet" href="\.\/assets\/design\.css" \/>/);
-  // An inline icon keeps the browser from asking for /favicon.ico, which returned 404.
-  assert.match(html, /<link\s+rel="icon"\s+href="data:image\/svg\+xml,/);
+  // The icon is a file, not a data URI: the same artwork is the favicon, the home-screen
+  // shortcut and the bot's avatar, and three copies of it would drift apart.
+  assert.match(html, /<link rel="icon" href="\.\/branding\/icon\.svg" type="image\/svg\+xml" \/>/);
+  assert.match(html, /<link rel="apple-touch-icon" href="\.\/branding\/icon-180\.png" \/>/);;
 });
 
 test("the theme is resolved before the first paint, in one place", async () => {

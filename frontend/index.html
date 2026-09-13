@@ -6,11 +6,10 @@
     <title>tg-digest</title>
     <meta name="description" content="Дайджесты из Telegram-каналов через DeepSeek" />
     <meta name="color-scheme" content="light dark" />
-    <!-- Inline icon: no extra request, and no 404 for /favicon.ico. -->
-    <link
-      rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='sans-serif' font-size='16' font-weight='700' fill='white' text-anchor='middle'%3Etg%3C/text%3E%3C/svg%3E"
-    />
+    <!-- The icon lives in branding/ as a real file: one source of truth for the browser,
+         the bot's avatar and the home-screen shortcut. -->
+    <link rel="icon" href="./branding/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./branding/icon-180.png" />
     <link rel="stylesheet" href="./assets/design.css" />
     <script>
       // Resolve the theme before the first paint, so the page never flashes the wrong

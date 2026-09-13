@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <title>icon preview</title>
+    <!--
+      A throwaway page for rendering the icon to PNG at exact sizes and for judging it at the
+      sizes it actually appears in. Screenshot the .tile element; do not ship this file.
+    -->
+    <style>
+      body { margin: 0; background: #fff; font-family: -apple-system, sans-serif; }
+      .row { display: flex; align-items: flex-end; gap: 24px; padding: 24px; }
+      .tile { display: block; }
+      .on-dark { background: #17212b; }
+      .label { font-size: 12px; color: #666; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <div class="row">
+      <div>
+        <img class="tile" id="icon-512" src="./icon.svg" width="512" height="512" alt="" />
+        <div class="label">512</div>
+      </div>
+    </div>
+    <div class="row">
+      <div><img class="tile" id="icon-192" src="./icon.svg" width="192" height="192" alt="" /><div class="label">192</div></div>
+      <div><img class="tile" id="icon-180" src="./icon.svg" width="180" height="180" alt="" /><div class="label">180</div></div>
+      <div><img class="tile" id="icon-128" src="./icon.svg" width="128" height="128" alt="" /><div class="label">128</div></div>
+      <div><img class="tile" id="icon-64" src="./icon.svg" width="64" height="64" alt="" /><div class="label">64</div></div>
+      <div><img class="tile" id="icon-48" src="./icon.svg" width="48" height="48" alt="" /><div class="label">48</div></div>
+      <div><img class="tile" id="icon-32" src="./icon.svg" width="32" height="32" alt="" /><div class="label">32</div></div>
+      <div><img class="tile" id="icon-24" src="./icon.svg" width="24" height="24" alt="" /><div class="label">24</div></div>
+    </div>
+    <div class="row on-dark">
+      <div><img class="tile" src="./icon.svg" width="96" height="96" alt="" /><div class="label" style="color:#aaa">на тёмном</div></div>
+      <div><img class="tile" src="./icon.svg" width="48" height="48" alt="" /><div class="label" style="color:#aaa">на тёмном</div></div>
+    </div>
+  </body>
+</html>

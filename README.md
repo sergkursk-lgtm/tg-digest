@@ -10,6 +10,13 @@
 
 **<https://sergkursk-lgtm.github.io/tg-digest/>**
 
+<p align="center">
+  <img src="frontend/branding/icon.svg" width="96" alt="tg-digest" />
+</p>
+
+Иконка приложения — [`frontend/branding/`](frontend/branding/README.md): она же аватар бота
+в Telegram и значок ярлыка на домашнем экране.
+
 ## Из чего состоит
 
 | Часть | Где | Что делает |

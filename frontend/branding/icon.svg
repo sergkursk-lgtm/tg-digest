@@ -1,0 +1,48 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 512 512"
+  width="512"
+  height="512"
+  role="img"
+  aria-label="tg-digest"
+>
+  <!--
+    The app icon.
+
+    One idea, drawn once: three lines that get shorter are what a digest is, and the small
+    spark in the corner is the "ask the model" part. It is built from the interface's own
+    tokens — the accent blue, the 22% corner radius of a card, the rounded line ends — so the
+    icon and the app look like the same thing.
+
+    Everything is geometry, no text and no fine detail: at 32px the three bars still read,
+    which is the only size that really matters.
+  -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b7bff" />
+      <stop offset="1" stop-color="#1c4ed8" />
+    </linearGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" />
+      <stop offset="1" stop-color="#eff3ff" />
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="116" fill="url(#tile)" />
+
+  <!-- The sheet the digest is written on. -->
+  <rect x="96" y="118" width="320" height="276" rx="48" fill="url(#paper)" />
+
+  <!-- Three lines, shortening: the compression that makes it a digest. -->
+  <g fill="#2563eb">
+    <rect x="140" y="174" width="232" height="28" rx="14" />
+    <rect x="140" y="230" width="180" height="28" rx="14" />
+    <rect x="140" y="286" width="124" height="28" rx="14" />
+  </g>
+
+  <!-- And the question you can ask about it. -->
+  <path
+    d="M352 302l9 22 22 9-22 9-9 22-9-22-22-9 22-9z"
+    fill="#2563eb"
+  />
+</svg>
