@@ -183,7 +183,7 @@ export function setupSteps(snapshot, secretNames = []) {
     {
       id: "bot",
       title: "Доставка в Telegram",
-      hint: "токен бота от @BotFather и ваш chat_id",
+      hint: "токен бота от @BotFather и ваш chat_id — чтобы поставить кнопку входа в бот",
       done: botReady,
       hidden: false,
       // A digest is still stored and readable without a bot; refusing to show anything

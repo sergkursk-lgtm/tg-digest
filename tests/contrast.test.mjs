@@ -143,6 +143,17 @@ test("press feedback is defined and fast enough to feel immediate", () => {
   }
 });
 
+test("the pressed state is painted from pointer events as well as :active", () => {
+  // iOS Safari does not apply `:active` to a button unless the page listens for touches,
+  // and Android's webview delays it: without a class the press would be invisible there.
+  for (const selector of [".btn", ".chip", ".numpad__key", ".fab", ".list__row", ".switchrow"]) {
+    assert.ok(
+      CSS.includes(`${selector}.is-pressed`),
+      `${selector} has no state a script can set`,
+    );
+  }
+});
+
 test("button-like primitives centre their own label", () => {
   // The button reset sets `text-align: inherit`, so a primitive that relies on the user
   // agent to centre its text ends up with the label pinned to the left edge. That is how
@@ -185,7 +196,7 @@ test("only compositor-friendly properties are animated", () => {
   const animated = [...CSS.matchAll(/transition:\s*([^;]+);/g)]
     .flatMap((m) => m[1].split(","))
     .map((part) => part.trim().split(/\s+/)[0])
-    .filter(Boolean);
+    .filter((property) => property && property !== "none");
   const allowed = new Set([
     "transform",
     "opacity",
@@ -200,12 +211,23 @@ test("only compositor-friendly properties are animated", () => {
   assert.deepEqual(offenders, [], "these properties would animate layout or paint");
 });
 
-test("reduced motion is honoured", () => {
+test("reduced motion removes decorative movement but keeps press feedback", () => {
   assert.match(CSS, /@media \(prefers-reduced-motion: reduce\)/);
   const at = CSS.indexOf("@media (prefers-reduced-motion: reduce)");
   const block = CSS.slice(at, CSS.indexOf("\n}", at));
-  assert.match(block, /transition-duration:\s*0\.01ms\s*!important/);
-  assert.match(block, /animation-duration:\s*0\.01ms\s*!important/);
+
+  // The things that move on their own are switched off: slides, pulses, skeletons, shakes.
+  for (const selector of [".sheet", ".scrim", ".toast", ".skeleton", ".lock--shake .lock__dots"]) {
+    assert.ok(block.includes(selector), `${selector} should stop moving under reduced motion`);
+  }
+  assert.match(block, /animation:\s*none\s*!important/);
+
+  // A press is not in that list on purpose: it is direct feedback that the tap landed, and
+  // a blanket override here is what silently removed every press animation on a phone.
+  assert.ok(
+    !/\.btn[^,{]*\{/.test(block),
+    "press feedback must survive reduced motion",
+  );
 });
 
 test("tap targets are at least 48px", () => {

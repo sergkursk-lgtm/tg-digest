@@ -71,6 +71,7 @@
 
   /* motion */
   --dur-press: 90ms;
+  --dur-release: 200ms;
   --dur-fast: 140ms;
   --dur-base: 220ms;
   --dur-slow: 320ms;
@@ -212,13 +213,24 @@ a {
   border-radius: var(--r-sm);
 }
 
+/* Reduce Motion is about large decorative movement: slides, pulses, skeletons, the shake.
+   A button travelling 3px under the finger is direct feedback that the tap registered, so
+   it deliberately stays — and this is the setting that silently removed every press
+   animation on a real phone, which is worse than a slightly livelier button. */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+  .sheet,
+  .scrim,
+  .toast,
+  .skeleton,
+  .bubble,
+  .dot,
+  .step__dot,
+  .switch::after,
+  .meter__fill,
+  .swipe__content,
+  .lock--shake .lock__dots {
+    animation: none !important;
+    transition: none !important;
   }
 }
 
@@ -324,8 +336,10 @@ a {
     var(--shadow-1),
     inset 0 1px 0 var(--highlight);
   /* Press feedback first: it must land inside the ~100ms the eye needs to trust a tap. */
+  /* Pressing is fast and releasing springs back: the transition of the state being
+     entered is the one that runs. */
   transition:
-    transform var(--dur-press) var(--ease-out),
+    transform var(--dur-release) var(--ease-spring),
     background-color var(--dur-fast) var(--ease-out),
     box-shadow var(--dur-press) var(--ease-out),
     opacity var(--dur-fast) var(--ease-out);
@@ -333,8 +347,10 @@ a {
 
 /* A press travels down by exactly the height of the wall, which disappears underneath:
    the button ends up sitting on the surface it stood on. */
-.btn:active:not(:disabled) {
-  transform: translateY(var(--lift)) scale(0.99);
+.btn:active:not(:disabled),
+.btn.is-pressed {
+  transition-duration: var(--dur-press);
+  transform: translateY(var(--lift)) scale(0.98);
   box-shadow:
     0 0 0 var(--edge),
     inset 0 1px 0 var(--highlight);
@@ -359,7 +375,8 @@ a {
 }
 
 /* Pressing a raised button should feel like pushing it down, not like shaking it. */
-.btn--primary:active:not(:disabled) {
+.btn--primary:active:not(:disabled),
+.btn--primary.is-pressed {
   box-shadow:
     0 0 0 var(--edge-accent),
     inset 0 1px 0 rgb(255 255 255 / 28%);
@@ -384,7 +401,8 @@ a {
   box-shadow: none;
 }
 
-.btn--quiet:active:not(:disabled) {
+.btn--quiet:active:not(:disabled),
+.btn--quiet.is-pressed {
   transform: scale(0.96);
   background: var(--surface-2);
   box-shadow: none;
@@ -399,7 +417,8 @@ a {
     inset 0 1px 0 var(--highlight);
 }
 
-.btn--danger:active:not(:disabled) {
+.btn--danger:active:not(:disabled),
+.btn--danger.is-pressed {
   box-shadow:
     0 0 0 var(--edge-danger),
     inset 0 1px 0 var(--highlight);
@@ -446,14 +465,18 @@ a {
     var(--shadow-2),
     inset 0 1px 0 rgb(255 255 255 / 28%);
   cursor: pointer;
+  /* Pressing is fast and releasing springs back: the transition of the state being
+     entered is the one that runs. */
   transition:
-    transform var(--dur-press) var(--ease-out),
+    transform var(--dur-release) var(--ease-spring),
     background-color var(--dur-fast) var(--ease-out),
     box-shadow var(--dur-press) var(--ease-out);
 }
 
-.fab:active {
-  transform: translateY(var(--lift)) scale(0.99);
+.fab:active,
+.fab.is-pressed {
+  transition-duration: var(--dur-press);
+  transform: translateY(var(--lift)) scale(0.97);
   box-shadow:
     0 0 0 var(--edge-accent),
     var(--shadow-1),
@@ -517,7 +540,8 @@ a {
   border-bottom: none;
 }
 
-.list__row:active {
+.list__row:active,
+.list__row.is-pressed {
   background: var(--surface-2);
 }
 
@@ -557,6 +581,50 @@ a {
 .chev {
   color: var(--text-muted);
   flex: none;
+}
+
+/* -- swipe to delete -------------------------------------------------------- */
+
+/* The row slides left and the action is already behind it: nothing appears from nowhere,
+   and the row itself stays a single tap target when it is closed. */
+.swipe {
+  position: relative;
+  overflow: hidden;
+}
+
+.swipe__content {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  background: var(--surface);
+  touch-action: pan-y;
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+.swipe__actions {
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: flex;
+}
+
+.swipe__delete {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 104px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+}
+
+.swipe__delete:active,
+.swipe__delete.is-pressed {
+  background: color-mix(in srgb, var(--danger) 82%, black);
 }
 
 /* -- fields ----------------------------------------------------------------- */
@@ -638,7 +706,8 @@ a {
   border-bottom: none;
 }
 
-.switchrow:active {
+.switchrow:active,
+.switchrow.is-pressed {
   background: var(--surface-2);
 }
 
@@ -719,15 +788,17 @@ a {
     var(--shadow-1),
     inset 0 1px 0 var(--highlight);
   transition:
-    transform var(--dur-press) var(--ease-out),
+    transform var(--dur-release) var(--ease-spring),
     background-color var(--dur-fast) var(--ease-out),
     border-color var(--dur-fast) var(--ease-out),
     color var(--dur-fast) var(--ease-out),
     box-shadow var(--dur-press) var(--ease-out);
 }
 
-.chip:active {
-  transform: translateY(var(--lift)) scale(0.99);
+.chip:active,
+.chip.is-pressed {
+  transition-duration: var(--dur-press);
+  transform: translateY(var(--lift)) scale(0.97);
   box-shadow:
     0 0 0 var(--edge),
     inset 0 1px 0 var(--highlight);
@@ -743,7 +814,8 @@ a {
     inset 0 1px 0 rgb(255 255 255 / 28%);
 }
 
-.chip--on:active {
+.chip--on:active,
+.chip--on.is-pressed {
   box-shadow:
     0 0 0 var(--edge-accent),
     inset 0 1px 0 rgb(255 255 255 / 28%);
@@ -784,7 +856,8 @@ a {
     transform var(--dur-press) var(--ease-out);
 }
 
-.tabbar__item:active {
+.tabbar__item:active,
+.tabbar__item.is-pressed {
   transform: scale(0.94);
 }
 
@@ -894,16 +967,20 @@ a {
     0 var(--lift) 0 var(--edge),
     var(--shadow-1),
     inset 0 1px 0 var(--highlight);
+  /* Pressing is fast and releasing springs back: the transition of the state being
+     entered is the one that runs. */
   transition:
-    transform var(--dur-press) var(--ease-out),
+    transform var(--dur-release) var(--ease-spring),
     background-color var(--dur-fast) var(--ease-out),
     box-shadow var(--dur-press) var(--ease-out);
 }
 
 /* Pressing sinks the key onto the surface: it travels down by its own thickness and the
    wall disappears under it. */
-.numpad__key:active:not(:disabled) {
-  transform: translateY(var(--lift)) scale(0.99);
+.numpad__key:active:not(:disabled),
+.numpad__key.is-pressed {
+  transition-duration: var(--dur-press);
+  transform: translateY(var(--lift)) scale(0.96);
   background: var(--surface-2);
   box-shadow:
     0 0 0 var(--edge),
@@ -1260,7 +1337,8 @@ a {
   display: none;
 }
 
-.accordion > summary:active {
+.accordion > summary:active,
+.accordion > summary.is-pressed {
   background: var(--surface-2);
 }
 

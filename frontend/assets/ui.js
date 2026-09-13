@@ -42,6 +42,190 @@ export function haptic(kind = "light", scope = globalThis) {
   }
 }
 
+// -- press feedback -----------------------------------------------------------
+
+/**
+ * Paint the pressed state from pointer events.
+ *
+ * CSS `:active` is not enough on its own: iOS Safari does not apply it to a `<button>`
+ * unless something on the page listens for touches, and Android's webview applies it only
+ * after a delay. A tap then looks like it did nothing. One delegated listener covers every
+ * button, including the ones built later, and it fires on the way down — so the feedback
+ * arrives with the finger, not after the browser's decision to make it a tap.
+ *
+ * @param {Document|HTMLElement} [root]
+ * @returns {() => void} removes the listeners
+ */
+export function installPressFeedback(root = globalThis.document) {
+  if (!root?.addEventListener) {
+    return () => {};
+  }
+  const supportsPointer = typeof globalThis.PointerEvent === "function";
+  const downEvent = supportsPointer ? "pointerdown" : "touchstart";
+  const upEvents = supportsPointer ? ["pointerup", "pointercancel"] : ["touchend", "touchcancel"];
+
+  let pressed = null;
+
+  const clear = () => {
+    pressed?.classList?.remove("is-pressed");
+    pressed = null;
+  };
+
+  const down = (event) => {
+    const target = event.target?.closest?.("button, .btn, .chip, .numpad__key");
+    if (!target || target.disabled) {
+      return;
+    }
+    // One at a time: a second finger must not leave the first button stuck down.
+    clear();
+    pressed = target;
+    target.classList.add("is-pressed");
+  };
+
+  root.addEventListener(downEvent, down, { passive: true });
+  for (const type of upEvents) {
+    root.addEventListener(type, clear, { passive: true });
+  }
+  // A gesture that turns into a scroll or leaves the window must not leave a button stuck.
+  root.addEventListener("scroll", clear, { passive: true, capture: true });
+  globalThis.addEventListener?.("blur", clear);
+
+  return () => {
+    root.removeEventListener(downEvent, down);
+    for (const type of upEvents) {
+      root.removeEventListener(type, clear);
+    }
+    root.removeEventListener("scroll", clear, { capture: true });
+    globalThis.removeEventListener?.("blur", clear);
+    clear();
+  };
+}
+
+// -- swipe --------------------------------------------------------------------
+
+/** How far a swiped row travels to reveal its action. */
+export const SWIPE_WIDTH = 104;
+
+/** Drag distance past which the row stays open. */
+export const SWIPE_TRIGGER = 44;
+
+/**
+ * Decide where a swiped row settles.
+ *
+ * Pure so the gesture can be reasoned about without a touchscreen: the whole decision is
+ * "did the finger travel far enough, in the right direction, to change the state".
+ *
+ * @param {object} options
+ * @param {number} options.dx total horizontal travel, negative to the left
+ * @param {boolean} options.open whether the row is open now
+ * @returns {"open"|"closed"}
+ */
+export function swipeOutcome({ dx, open, trigger = SWIPE_TRIGGER }) {
+  const base = open ? -1 : 0;
+  const travel = dx + base * SWIPE_WIDTH;
+  if (open) {
+    return travel > -trigger ? "closed" : "open";
+  }
+  return travel < -trigger ? "open" : "closed";
+}
+
+/**
+ * Make a row reveal an action when it is swiped to the left.
+ *
+ * @param {HTMLElement} wrapper the positioned container
+ * @param {HTMLElement} content the part that slides
+ * @returns {{close: Function, isOpen: Function, destroy: Function}}
+ */
+export function swipeToReveal(wrapper, content, { width = SWIPE_WIDTH, trigger = SWIPE_TRIGGER } = {}) {
+  let open = false;
+  let dragging = false;
+  let startX = 0;
+  let startY = 0;
+  let dx = 0;
+
+  const offset = (value) => {
+    content.style.transform = value ? `translateX(${value}px)` : "";
+    wrapper.dataset.swipe = value ? "open" : "closed";
+  };
+
+  const close = () => {
+    open = false;
+    offset(0);
+  };
+
+  const openRow = () => {
+    open = true;
+    offset(-width);
+  };
+
+  const onStart = (event) => {
+    const touch = event.touches?.[0];
+    if (!touch) {
+      return;
+    }
+    dragging = false;
+    startX = touch.clientX;
+    startY = touch.clientY;
+    dx = 0;
+  };
+
+  const onMove = (event) => {
+    const touch = event.touches?.[0];
+    if (!touch) {
+      return;
+    }
+    dx = touch.clientX - startX;
+    const dy = touch.clientY - startY;
+    if (!dragging) {
+      // A mostly vertical gesture belongs to the page scroll, not to the row.
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
+        return;
+      }
+      if (Math.abs(dx) < 10) {
+        return;
+      }
+      dragging = true;
+    }
+    event.preventDefault();
+    const base = open ? -width : 0;
+    const next = Math.max(-width, Math.min(0, base + dx));
+    offset(next);
+  };
+
+  const onEnd = () => {
+    if (!dragging) {
+      // A tap on an open row puts it back instead of opening the digest.
+      if (open) {
+        close();
+      }
+      return;
+    }
+    dragging = false;
+    if (swipeOutcome({ dx, open, trigger }) === "open") {
+      openRow();
+    } else {
+      close();
+    }
+  };
+
+  content.addEventListener("touchstart", onStart, { passive: true });
+  // Not passive: the horizontal drag has to stop the page from scrolling sideways.
+  content.addEventListener("touchmove", onMove, { passive: false });
+  content.addEventListener("touchend", onEnd);
+  content.addEventListener("touchcancel", onEnd);
+
+  return {
+    close,
+    isOpen: () => open,
+    destroy() {
+      content.removeEventListener("touchstart", onStart);
+      content.removeEventListener("touchmove", onMove);
+      content.removeEventListener("touchend", onEnd);
+      content.removeEventListener("touchcancel", onEnd);
+    },
+  };
+}
+
 // -- icons --------------------------------------------------------------------
 
 // Hand-drawn on a 24px grid, stroke-only, so they inherit `currentColor` and stay legible

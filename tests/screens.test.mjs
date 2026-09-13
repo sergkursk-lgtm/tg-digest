@@ -153,21 +153,44 @@ test("a configured project is told it can start", async () => {
 
 // -- digests -------------------------------------------------------------------
 
-test("the digest list shows the spend line and one row per digest", async () => {
+test("the digest list is a list, with no spend line", async () => {
   const { createDigestsScreen } = await load("screen-digests.js");
   const screen = createDigestsScreen(context());
   const text = textOf(screen.node);
 
   assert.equal(screen.title, "Дайджесты");
   assert.match(text, /Собрано: 1/);
-  // Tariff, tokens and spend replace the old footer strip.
-  assert.match(text, /Off-peak|Peak/);
-  assert.match(text, /300 токенов|400 токенов/);
-  assert.match(text, /\$0\.0040 из \$5\.0000/);
   assert.match(text, /Клуб/);
   assert.match(text, /40 сообщ\./);
+
+  // Nothing about money, tokens or the tariff: the reader asked for the list to stay a
+  // list. The budget lives in settings.
+  for (const absent of ["Off-peak", "Peak", "токенов", "$"]) {
+    assert.ok(!text.includes(absent), `the list should not mention "${absent}"`);
+  }
+  assert.equal(all(screen.node, (child) => child.classList?.contains("spend")).length, 0);
+
   // A floating "collect" button appears only when there is something to collect.
   assert.ok(screen.floating, "a project with channels gets the floating button");
+});
+
+test("a digest row can be swiped to reveal Delete", async () => {
+  const { createDigestsScreen } = await load("screen-digests.js");
+  const screen = createDigestsScreen(context());
+
+  const wrappers = all(screen.node, (child) => child.classList?.contains("swipe"));
+  assert.equal(wrappers.length, 1, "each digest gets a swipable row");
+
+  const action = all(screen.node, (child) => child.classList?.contains("swipe__delete"));
+  assert.equal(action.length, 1);
+  assert.match(textOf(action[0]), /Удалить/);
+  // A screen reader needs a name that says which digest is being deleted.
+  assert.match(action[0].getAttribute("aria-label"), /Удалить дайджест/);
+
+  // The row itself is still the tap target that opens the digest.
+  const content = all(screen.node, (child) => child.classList?.contains("swipe__content"));
+  assert.equal(content.length, 1);
+  assert.equal(content[0].tagName, "BUTTON");
 });
 
 test("an empty project is offered the one useful action", async () => {
@@ -263,7 +286,7 @@ test("settings shows one section per concern, with secrets kept out of sight", a
   const { node } = createSettingsScreen(context());
   const text = textOf(node);
 
-  for (const section of ["Статус", "Аккаунт Telegram", "DeepSeek", "Доставка в Telegram", "Бюджет на месяц", "Лимиты запусков", "Оформление", "Опасное"]) {
+  for (const section of ["Статус", "Аккаунт Telegram", "DeepSeek", "Приложение в Telegram", "Бюджет на месяц", "Лимиты запусков", "Оформление", "Опасное"]) {
     assert.ok(text.includes(section), `missing the "${section}" section`);
   }
 
@@ -275,6 +298,25 @@ test("settings shows one section per concern, with secrets kept out of sight", a
   // Templates and statistics are collapsed, not competing for the root.
   const details = all(node, (child) => child.tagName === "DETAILS");
   assert.equal(details.length, 2);
+});
+
+test("nothing in settings sends anything to Telegram", async () => {
+  const { createSettingsScreen } = await load("screen-settings.js");
+  const { node } = createSettingsScreen(context());
+  const text = textOf(node);
+
+  // The bot is the entrance to the app, not a delivery channel.
+  assert.match(text, /Бот нужен как вход/);
+  assert.match(text, /Показать кнопку в боте/);
+  assert.ok(!text.includes("Отправляю тестовое сообщение"));
+
+  // The send path is gone from the source entirely.
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(
+    new URL("../frontend/assets/screen-settings.js", import.meta.url),
+    "utf8",
+  );
+  assert.ok(!source.includes("sendMessage"), "settings must not send messages");
 });
 
 test("questions appear in the statistics only once there are some", async () => {
@@ -290,4 +332,31 @@ test("questions appear in the statistics only once there are some", async () => 
   assert.ok(!without.includes("Вопросов к ИИ"));
   // An older usage file simply has no questions field.
   assert.match(without, /Дайджестов/);
+});
+
+test("the new-digest sheet promises nothing about the bot", async () => {
+  const { openNewDigestSheet } = await load("screen-digests.js");
+  const sheet = openNewDigestSheet(context({ client: {}, snapshot: snapshot() }));
+  const text = textOf(sheet.body ?? sheet.root);
+  assert.match(text, /1 канал · 24 ч/);
+  assert.ok(!text.includes("в бота"), "digests are not sent anywhere");
+});
+
+test("the run stages no longer include a delivery step", async () => {
+  const { describeStep } = await load("screen-digests.js");
+  // The pipeline has no `deliver` stage any more; an old run record that still carries one
+  // must not produce an empty row.
+  const stale = describeStep({ name: "deliver:c1", status: "ok" });
+  assert.equal(stale.label, "deliver");
+  assert.equal(describeStep({ name: "store:c1", status: "ok" }).label, "Сохраняю дайджест");
+});
+
+test("the digest screen offers delete, not resend", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(
+    new URL("../frontend/assets/screen-digests.js", import.meta.url),
+    "utf8",
+  );
+  assert.ok(!source.includes("sendToBot"), "the browser must not send anything to Telegram");
+  assert.ok(source.includes('label: "Удалить"'), "the detail screen offers delete");
 });

@@ -39,7 +39,6 @@ const ASSETS = [
   "seal.js",
   "state.js",
   "tariff.js",
-  "telegram.js",
   "ui.js",
 ];
 
@@ -250,10 +249,11 @@ test("index.html declares the shell the router draws into", async () => {
   // The chrome starts hidden: the lock screen and onboarding show none of it.
   assert.match(html, /<header class="appbar" id="appbar" hidden>/);
   assert.match(html, /<nav class="tabbar" id="tabbar" hidden/);
-  // The cost line lives inside the digest list rather than in a permanent bottom strip.
+  // Neither a permanent bottom strip nor a spend line: the digest list is a list, and the
+  // money is shown where it is looked at deliberately.
   assert.ok(!html.includes("footer-status"), "the global cost strip should be gone");
   const digests = await readAsset("screen-digests.js");
-  assert.match(digests, /class: "spend"/);
+  assert.ok(!digests.includes('class: "spend"'), "the digest list should carry no spend line");
 });
 
 test("the router knows every route a screen can navigate to", async () => {

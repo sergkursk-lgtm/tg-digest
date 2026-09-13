@@ -253,8 +253,14 @@ function deepseekSection(ctx) {
   });
 }
 
-/** Bot delivery: token, chat id, and a real test message. */
-function deliverySection(ctx) {
+/**
+ * The bot as the *entrance* to the app, not as a delivery channel.
+ *
+ * Nothing is ever sent to Telegram: digests live in the data branch and are read here. What
+ * the bot token is still good for is putting the "Дайджесты" button next to the message box,
+ * which is how the app is opened on a phone.
+ */
+function telegramAppSection(ctx) {
   const telegram = ctx.snapshot.settings?.values?.telegram ?? {};
   const status = statusLine();
   const token = field({
@@ -305,19 +311,15 @@ function deliverySection(ctx) {
       }
       try {
         setStatus(status, "Проверяю бота…");
+        // getMe only: nothing is sent to Telegram. Sending a test message would be a
+        // delivery, and there is no delivery any more.
         const me = await callBot("getMe", botToken, {});
-        setStatus(status, `Бот @${me.username}. Отправляю тестовое сообщение…`);
-        await callBot("sendMessage", botToken, {
-          chat_id: chat,
-          text: "tg-digest: проверка связи. Всё настроено.",
-          link_preview_options: { is_disabled: true },
-        });
         const merged = mergeTelegramSettings(ctx.snapshot.settings, {
           bot_token: botToken,
           chat_id: chat,
         });
-        await saveSettings(ctx, merged, "feat(settings): configure bot delivery");
-        setStatus(status, "Сообщение отправлено, настройки сохранены.", "ok");
+        await saveSettings(ctx, merged, "feat(settings): configure the Telegram app button");
+        setStatus(status, `Бот @${me.username} отвечает. Настройки сохранены.`, "ok");
         await ctx.refresh({ silent: true });
       } catch (error) {
         setStatus(status, error.message, "error");
@@ -325,15 +327,36 @@ function deliverySection(ctx) {
     },
   });
 
+  const showButton = actionButton({
+    label: "Показать кнопку в боте",
+    icon: "send",
+    busyLabel: "Настраиваю…",
+    action: async () => {
+      const botToken = token.input.value.trim();
+      const chat = chatId.input.value.trim();
+      if (!botToken || !chat) {
+        setStatus(status, "Сначала заполните токен и chat_id.", "error");
+        return;
+      }
+      try {
+        // The app's own address, so the button points wherever this copy is published.
+        const url = `${location.origin}${location.pathname}`;
+        setStatus(status, "Ставлю кнопку…");
+        await callBot("setChatMenuButton", botToken, {
+          chat_id: chat,
+          menu_button: { type: "web_app", text: "Дайджесты", web_app: { url } },
+        });
+        setStatus(status, "Готово: кнопка «Дайджесты» появится у бота рядом с полем ввода.", "ok");
+      } catch (error) {
+        setStatus(status, error.message, "error");
+      }
+    },
+  });
+
   return card({
-    title: "Доставка в Telegram",
-    children: [
-      token.field,
-      chatId.field,
-      discover,
-      save,
-      status,
-    ],
+    title: "Приложение в Telegram",
+    subtitle: "Дайджесты остаются здесь. Бот нужен как вход — кнопка открывает это приложение.",
+    children: [token.field, chatId.field, discover, save, showButton, status],
   });
 }
 
@@ -582,8 +605,6 @@ function statisticsAccordion(ctx) {
  *        `setTheme`
  */
 export function createSettingsScreen(ctx) {
-  const telegram = ctx.snapshot.settings?.values?.telegram ?? {};
-  const deliveryReady = Boolean(telegram.bot_token && telegram.chat_id);
 
   const forget = button({
     label: "Забыть токен GitHub",
@@ -613,13 +634,7 @@ export function createSettingsScreen(ctx) {
       statusSection(ctx),
       telegramSection(ctx),
       deepseekSection(ctx),
-      deliveryReady
-        ? null
-        : el("p", {
-            class: "status status--warn",
-            text: "Доставка не настроена: дайджесты сохраняются здесь, но в бота не уходят.",
-          }),
-      deliverySection(ctx),
+      telegramAppSection(ctx),
       budgetSection(ctx),
       limitsSection(ctx),
       appearanceSection(ctx, {

@@ -24,7 +24,7 @@ import { createChannelsScreen } from "./screen-channels.js";
 import { createDigestDetail, createDigestsScreen } from "./screen-digests.js";
 import { createSettingsScreen, createTelegramLoginScreen } from "./screen-settings.js";
 import { isSetupComplete, loadSnapshot, secretsFromSetupRun, setupSteps } from "./state.js";
-import { haptic, icon, toast } from "./ui.js";
+import { haptic, icon, installPressFeedback, toast } from "./ui.js";
 
 const THEME_KEY = "tg-digest.theme";
 const ONBOARDED_KEY = "tg-digest.onboarded";
@@ -432,6 +432,9 @@ function boot() {
   }
 
   initTheme();
+  // Safari on iOS will not show `:active` on a button unless the page listens for touches,
+  // so the pressed state is painted from pointer events instead of left to the browser.
+  installPressFeedback(document);
   backButton?.addEventListener("click", () => {
     haptic("light");
     back();

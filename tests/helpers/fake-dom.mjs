@@ -108,6 +108,27 @@ class FakeNode {
     return payload;
   }
 
+  /** Walk up to the nearest ancestor matching a simple tag or class selector. */
+  closest(selector) {
+    const wanted = String(selector)
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    let node = this;
+    while (node) {
+      const hit = wanted.some((entry) =>
+        entry.startsWith(".")
+          ? node.classList?.contains(entry.slice(1))
+          : node.tagName === entry.toUpperCase(),
+      );
+      if (hit) {
+        return node;
+      }
+      node = node.parent ?? null;
+    }
+    return null;
+  }
+
   querySelector(selector) {
     return this.querySelectorAll(selector)[0] ?? null;
   }

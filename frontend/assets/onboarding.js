@@ -102,7 +102,7 @@ export function createTokenStep({ mount, nacl, clientFactory, onDone }) {
           el("h1", { text: "tg-digest" }),
           el("p", {
             class: "muted",
-            text: "Дайджесты из Telegram-каналов: читаем сообщения, сжимаем через DeepSeek, отдаём сюда и в бота.",
+            text: "Дайджесты из Telegram-каналов: читаем сообщения, сжимаем через DeepSeek и складываем сюда.",
           }),
         ]),
         card({

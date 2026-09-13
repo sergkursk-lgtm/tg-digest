@@ -14,22 +14,13 @@
 import { ASK_WORKFLOW, DIGEST_WORKFLOW, pollUntil, runWorkflow } from "./backend.js";
 import { clear, el } from "./dom.js";
 import { sanitizeHtml } from "./sanitize.js";
-import {
-  PATHS,
-  briefTopics,
-  digestFileName,
-  formatMoment,
-  formatTokens,
-  formatUsd,
-  usageSummary,
-} from "./state.js";
-import { MODEL, tariffLabel } from "./tariff.js";
-import { sendToBot } from "./telegram.js";
+import { PATHS, briefTopics, digestFileName, formatTokens, formatMoment, formatUsd } from "./state.js";
 import {
   actionButton,
   button,
   card,
   channelCount,
+  confirmSheet,
   createSheet,
   emptyState,
   haptic,
@@ -38,6 +29,7 @@ import {
   screen,
   skeletonRows,
   stepList,
+  swipeToReveal,
   toast,
 } from "./ui.js";
 
@@ -58,7 +50,6 @@ const STAGE_LABELS = {
   read: "Читаю Telegram",
   summarize: "Сжимаю через DeepSeek",
   store: "Сохраняю дайджест",
-  deliver: "Отправляю в бота",
   channels: "Завершаю",
 };
 
@@ -132,6 +123,73 @@ function scrollToNewest(container) {
   newest.scrollIntoView({ block: "nearest", behavior: calm ? "auto" : "smooth" });
 }
 
+/**
+ * The digest index without one entry.
+ *
+ * Pure, so the one thing that can go wrong here — leaving a row in the index whose file is
+ * gone, or dropping the wrong one — is testable without GitHub.
+ *
+ * @param {object|null} index contents of data/digests/index.json
+ * @param {string} digestId
+ * @returns {object} the index to write back
+ */
+export function withoutDigest(index, digestId) {
+  const base = index ?? { schema: 1 };
+  return {
+    ...base,
+    schema: base.schema ?? 1,
+    updated_at: new Date().toISOString(),
+    items: (base.items ?? []).filter((item) => item?.id !== digestId),
+  };
+}
+
+/**
+ * Delete one digest: the file, its row in the index, and the thread about it.
+ *
+ * The usage record stays where it is. The money was spent whether or not the digest is
+ * still on screen, and quietly rewriting the month's spend would make the budget lie.
+ */
+export async function deleteDigest(ctx, item) {
+  const stored = await ctx.client.readJson(PATHS.digest(item.id));
+  if (stored?.sha) {
+    await ctx.client.deleteFile(PATHS.digest(item.id), `chore(digest): remove ${item.id}`, stored.sha);
+  }
+  const index = await ctx.client.readJson(PATHS.digestIndex);
+  await ctx.client.writeJson(
+    PATHS.digestIndex,
+    withoutDigest(index?.data, item.id),
+    `chore(index): drop ${item.id}`,
+    index?.sha ?? null,
+  );
+  try {
+    localStorage.removeItem(threadKey(item.id));
+  } catch (error) {
+    /* storage may be unavailable; the thread then just stays behind */
+  }
+}
+
+/** Ask before deleting, then delete. */
+async function confirmDeleteDigest(ctx, item) {
+  const confirmed = await confirmSheet({
+    title: "Удалить дайджест?",
+    message: `«${item.channel_title ?? "дайджест"}» за ${periodLabel(item)} будет удалён из ветки данных. Расход в статистике останется — деньги уже потрачены.`,
+    confirmLabel: "Удалить",
+    danger: true,
+  });
+  if (!confirmed) {
+    return false;
+  }
+  try {
+    await deleteDigest(ctx, item);
+    toast("Дайджест удалён", "ok");
+  } catch (error) {
+    toast(error.message, "error");
+    return false;
+  }
+  await ctx.refresh({ silent: true });
+  return true;
+}
+
 /** Download a string as a file. */
 function downloadText(name, text, type = "text/markdown;charset=utf-8") {
   const blob = new Blob([text], { type });
@@ -164,22 +222,7 @@ export function createDigestsScreen(ctx) {
           el(
             "ul",
             { class: "list" },
-            items.map((item) =>
-              el("li", {}, [
-                listRow({
-                  title: item.channel_title ?? "канал",
-                  sub: periodLabel(item),
-                  // Two short lines beat one long one: the period needs the width more than
-                  // the price does.
-                  trailing: el("span", { class: "list__meta" }, [
-                    el("span", { text: `${item.messages_used ?? 0} сообщ.` }),
-                    el("span", { text: formatUsd(item.cost_usd) }),
-                  ]),
-                  chevron: true,
-                  onClick: () => ctx.navigate("digest", { id: item.id }),
-                }),
-              ]),
-            ),
+            items.map((item) => el("li", {}, [swipeRow(ctx, item)])),
           ),
         ],
       )
@@ -193,17 +236,18 @@ export function createDigestsScreen(ctx) {
         onAction: () => openNewDigestSheet(ctx),
       });
 
-  // The spend line replaces the footer calculator: on a phone a permanent strip at the
-  // bottom costs more than it tells, while here it is the first thing on the screen.
-  const summary = usageSummary(snapshot.usage, snapshot.settings);
-
-  // No heading of its own: the header already carries the screen name, and two identical
-  // titles stacked on each other reads as a mistake.
+  // No spend line, no tariff, no token count: the list is a list. The money lives in
+  // settings, where it is looked at deliberately rather than read past every time.
+  //
+  // No heading either: the header already carries the screen name, and two identical titles
+  // stacked on each other reads as a mistake.
   const node = screen([
     el("div", { class: "row row--between" }, [
       el("span", {
         class: "muted small",
-        text: items.length ? `Собрано: ${items.length}` : "Пока пусто",
+        text: items.length
+          ? `Собрано: ${items.length} · смахните строку влево, чтобы удалить`
+          : "Пока пусто",
       }),
       button({
         label: "Обновить",
@@ -211,19 +255,6 @@ export function createDigestsScreen(ctx) {
         variant: "quiet",
         onClick: () => ctx.refresh({ silent: true }),
       }),
-    ]),
-    el("div", { class: "spend" }, [
-      el("span", { class: "badge badge--quiet", text: tariffLabel(new Date()) }),
-      el("span", {
-        class: "spend__figure",
-        text: `${formatTokens(summary.tokensIn + summary.tokensOut)} токенов`,
-      }),
-      el("span", {
-        class: "spend__figure",
-        text: `${formatUsd(summary.costUsd)} из ${formatUsd(summary.limitUsd)}`,
-        dataset: { status: summary.status },
-      }),
-      el("span", { text: MODEL }),
     ]),
     body,
   ]);
@@ -248,6 +279,42 @@ export function createDigestsScreen(ctx) {
       : null;
 
   return { title: "Дайджесты", node, floating: fab };
+}
+
+/**
+ * One digest row: tap to read, swipe left to reveal Delete.
+ *
+ * Delete is behind the row rather than in front of it, so the closed row stays a single
+ * clean target. The same action is also a button on the digest itself, which is the path
+ * for a keyboard or a mouse.
+ */
+function swipeRow(ctx, item) {
+  const content = listRow({
+    title: item.channel_title ?? "канал",
+    sub: periodLabel(item),
+    meta: `${item.messages_used ?? 0} сообщ.`,
+    chevron: true,
+    onClick: () => ctx.navigate("digest", { id: item.id }),
+  });
+  content.classList.add("swipe__content");
+
+  const remove = el(
+    "button",
+    {
+      class: "swipe__delete",
+      type: "button",
+      "aria-label": `Удалить дайджест за ${periodLabel(item)}`,
+      on: { click: () => confirmDeleteDigest(ctx, item) },
+    },
+    [icon("trash", 20), el("span", { text: "Удалить" })],
+  );
+
+  const wrapper = el("div", { class: "swipe" }, [
+    el("div", { class: "swipe__actions" }, [remove]),
+    content,
+  ]);
+  swipeToReveal(wrapper, content);
+  return wrapper;
 }
 
 // -- new digest ---------------------------------------------------------------
@@ -318,7 +385,7 @@ export function openNewDigestSheet(ctx) {
   function updateSummary() {
     const list = [...selected];
     summary.textContent = list.length
-      ? `${channelCount(list.length)} · ${hours} ч · ответ придёт в бота`
+      ? `${channelCount(list.length)} · ${hours} ч`
       : "Ни один канал не выбран";
     runButton.disabled = list.length === 0;
   }
@@ -634,10 +701,17 @@ export function createDigestDetail(ctx, digestId) {
           icon: "download",
           onClick: () => downloadText(digestFileName(digest), digest.markdown ?? ""),
         }),
+        // The same delete the list offers by swiping, as a button: a keyboard or a mouse
+        // has no swipe.
         button({
-          label: "Отправить в бота",
-          icon: "send",
-          onClick: (event) => resend(event.currentTarget),
+          label: "Удалить",
+          icon: "trash",
+          variant: "danger",
+          onClick: async () => {
+            if (await confirmDeleteDigest(ctx, digest)) {
+              ctx.back();
+            }
+          },
         }),
       ]),
       el("p", { class: "small muted", text: `id: ${digest.id}` }),
@@ -774,28 +848,6 @@ export function createDigestDetail(ctx, digestId) {
     } catch (error) {
       pending.remove();
       list.append(el("div", { class: "bubble bubble--theirs", text: error.message }));
-    }
-  }
-
-  /** Resend the stored Telegram markup through the bot. */
-  async function resend(buttonNode) {
-    const telegram = ctx.snapshot.settings?.values?.telegram ?? {};
-    if (!telegram.bot_token || !telegram.chat_id) {
-      toast("Доставка не настроена: нет токена бота или chat_id", "error");
-      return;
-    }
-    buttonNode.disabled = true;
-    try {
-      await sendToBot({
-        token: telegram.bot_token,
-        chatId: telegram.chat_id,
-        markup: digest.telegram_html || digest.markdown || "",
-      });
-      toast("Отправлено в бота", "ok");
-    } catch (error) {
-      toast(error.message, "error");
-    } finally {
-      buttonNode.disabled = false;
     }
   }
 

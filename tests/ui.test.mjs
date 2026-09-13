@@ -140,3 +140,89 @@ test("stepList marks every stage", async () => {
   assert.equal(dots[1].classList.contains("step__dot--running"), true);
   assert.equal(dots[2].classList.contains("step__dot--pending"), true);
 });
+
+// -- press feedback -----------------------------------------------------------
+
+/** Capture the listeners a helper installs on a stub document. */
+function captureListeners() {
+  const listeners = new Map();
+  const document = {
+    addEventListener: (type, handler) => listeners.set(type, handler),
+    removeEventListener: (type) => listeners.delete(type),
+  };
+  return { listeners, document };
+}
+
+test("a press is painted from pointer events, not left to the browser", async () => {
+  // iOS Safari does not apply :active to a button unless the page listens for touches, and
+  // Android's webview delays it. A tap then looks like it did nothing.
+  const { ui } = await withDom();
+  const original = globalThis.PointerEvent;
+  // Node has no PointerEvent; a browser does, and that is the path being tested.
+  globalThis.PointerEvent = class PointerEvent {};
+  const { listeners, document } = captureListeners();
+  const stop = ui.installPressFeedback(document);
+
+  const button = ui.button({ label: "1" });
+  assert.equal(typeof listeners.get("pointerdown"), "function");
+
+  listeners.get("pointerdown")({ target: button });
+  assert.equal(button.classList.contains("is-pressed"), true, "the press must be visible");
+
+  listeners.get("pointerup")({});
+  assert.equal(button.classList.contains("is-pressed"), false, "the press must be released");
+
+  // A gesture that turns into a scroll must not leave the button stuck down.
+  listeners.get("pointerdown")({ target: button });
+  listeners.get("scroll")({});
+  assert.equal(button.classList.contains("is-pressed"), false);
+
+  stop();
+  assert.equal(listeners.size, 0, "the helper must be removable");
+  globalThis.PointerEvent = original;
+});
+
+test("without pointer events the helper falls back to touch events", async () => {
+  const { ui } = await withDom();
+  const original = globalThis.PointerEvent;
+  delete globalThis.PointerEvent;
+  try {
+    const { listeners, document } = captureListeners();
+    ui.installPressFeedback(document);
+    assert.equal(typeof listeners.get("touchstart"), "function");
+    assert.equal(listeners.get("pointerdown"), undefined);
+  } finally {
+    globalThis.PointerEvent = original;
+  }
+});
+
+test("a disabled control is never painted as pressed", async () => {
+  const { ui } = await withDom();
+  const original = globalThis.PointerEvent;
+  globalThis.PointerEvent = class PointerEvent {};
+  const { listeners, document } = captureListeners();
+  ui.installPressFeedback(document);
+
+  const button = ui.button({ label: "1" });
+  button.disabled = true;
+  listeners.get("pointerdown")({ target: button });
+  assert.equal(button.classList.contains("is-pressed"), false);
+
+  // A second finger must not leave the first button stuck down.
+  const other = ui.button({ label: "2" });
+  listeners.get("pointerdown")({ target: button });
+  listeners.get("pointerdown")({ target: other });
+  assert.equal(other.classList.contains("is-pressed"), true);
+  globalThis.PointerEvent = original;
+});
+
+test("a swipe settles open only past the trigger", async () => {
+  const { ui } = await withDom();
+  // A short nudge springs back...
+  assert.equal(ui.swipeOutcome({ dx: -20, open: false }), "closed");
+  // ...and a real swipe stays open.
+  assert.equal(ui.swipeOutcome({ dx: -70, open: false }), "open");
+  // Swiping the other way closes an open row, and a small backward nudge does not.
+  assert.equal(ui.swipeOutcome({ dx: 10, open: true }), "open");
+  assert.equal(ui.swipeOutcome({ dx: 80, open: true }), "closed");
+});
