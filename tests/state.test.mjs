@@ -9,6 +9,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  briefTopics,
+  digestFileName,
+  formatDate,
   formatMoment,
   formatTokens,
   formatUsd,
@@ -17,6 +20,7 @@ import {
   nextStepId,
   pendingSteps,
   setupSteps,
+  usageByDay,
   usageSummary,
 } from "../frontend/assets/state.js";
 
@@ -158,4 +162,77 @@ test("formatters render Russian-friendly strings", () => {
   assert.equal(formatMoment(null), "—");
   assert.equal(formatMoment("not a date"), "—");
   assert.notEqual(formatMoment("2026-09-13T12:00:00Z"), "—");
+  assert.equal(formatDate("2026-09-13T12:00:00Z"), "13.09");
+});
+
+// -- statistics by day --------------------------------------------------------
+
+test("usageByDay groups records by UTC day, newest first", () => {
+  const days = usageByDay({
+    items: [
+      { created_at: "2026-09-13T10:00:00+00:00", tokens_in: 100, tokens_out: 10, cost_usd: 0.01 },
+      { created_at: "2026-09-13T18:00:00+00:00", tokens_in: 200, tokens_out: 20, cost_usd: 0.02 },
+      { created_at: "2026-09-12T09:00:00+00:00", tokens_in: 50, tokens_out: 5, cost_usd: 0.005 },
+    ],
+  });
+
+  assert.deepEqual(days.map((day) => day.date), ["2026-09-13", "2026-09-12"]);
+  assert.equal(days[0].digests, 2);
+  assert.equal(days[0].tokensIn, 300);
+  assert.equal(days[0].tokensOut, 30);
+  assert.equal(days[0].costUsd, 0.03);
+  assert.equal(days[1].digests, 1);
+});
+
+test("usageByDay counts cache hits too", () => {
+  const days = usageByDay({
+    items: [{ created_at: "2026-09-13T10:00:00+00:00", cache_hit_tokens: 700 }],
+  });
+  assert.equal(days[0].cacheHitTokens, 700);
+});
+
+test("usageByDay tolerates a missing or empty file", () => {
+  assert.deepEqual(usageByDay(null), []);
+  assert.deepEqual(usageByDay({}), []);
+  assert.deepEqual(usageByDay({ items: [{ tokens_in: 5 }] }), []); // no timestamp
+});
+
+// -- digest presentation ------------------------------------------------------
+
+test("briefTopics keeps only the first bullets of each topic", () => {
+  const topics = [
+    { title: "Тарифы", bullets: ["a", "b", "c", "d"] },
+    { title: "Логистика", bullets: ["e"] },
+  ];
+  assert.deepEqual(briefTopics(topics), [
+    { title: "Тарифы", bullets: ["a", "b"] },
+    { title: "Логистика", bullets: ["e"] },
+  ]);
+});
+
+test("briefTopics can be told how many bullets to keep", () => {
+  assert.deepEqual(briefTopics([{ title: "X", bullets: ["a", "b", "c"] }], 1), [
+    { title: "X", bullets: ["a"] },
+  ]);
+});
+
+test("briefTopics handles nothing at all", () => {
+  assert.deepEqual(briefTopics(null), []);
+  assert.deepEqual(briefTopics([{ title: "X" }]), [{ title: "X", bullets: [] }]);
+});
+
+test("digestFileName is safe and keeps the channel name", () => {
+  const name = digestFileName({ id: "20260913T120000Z-c1", channel_title: "Мой канал / тест" });
+  assert.equal(name, "20260913T120000Z-c1-Мой-канал-тест.md");
+});
+
+test("digestFileName survives a hostile channel title", () => {
+  const name = digestFileName({ id: "x", channel_title: "../../etc/passwd <script>" });
+  assert.ok(!name.includes("/"));
+  assert.ok(!name.includes("<"));
+  assert.ok(name.endsWith(".md"));
+});
+
+test("digestFileName falls back when the digest is empty", () => {
+  assert.equal(digestFileName(null), "digest-digest.md");
 });

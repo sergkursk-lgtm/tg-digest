@@ -211,3 +211,72 @@ export function formatMoment(value) {
     minute: "2-digit",
   }).format(date);
 }
+
+/** Format just the date part, for the statistics table. */
+export function formatDate(value) {
+  if (!value) {
+    return "—";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+  return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit" }).format(date);
+}
+
+/**
+ * Group a month's usage records by UTC day, newest first.
+ *
+ * The stored file keeps a flat list plus month totals; the statistics screen needs the
+ * per-day cut, and the browser is the right place to compute it.
+ *
+ * @param {object|null} usageMonth contents of data/usage/<YYYY-MM>.json
+ * @returns {Array<{date: string, digests: number, tokensIn: number, tokensOut: number,
+ *                  cacheHitTokens: number, costUsd: number}>}
+ */
+export function usageByDay(usageMonth) {
+  const buckets = new Map();
+  for (const item of usageMonth?.items ?? []) {
+    const day = String(item.created_at ?? "").slice(0, 10);
+    if (!day) {
+      continue;
+    }
+    const bucket = buckets.get(day) ?? {
+      date: day,
+      digests: 0,
+      tokensIn: 0,
+      tokensOut: 0,
+      cacheHitTokens: 0,
+      costUsd: 0,
+    };
+    bucket.digests += 1;
+    bucket.tokensIn += Number(item.tokens_in ?? 0);
+    bucket.tokensOut += Number(item.tokens_out ?? 0);
+    bucket.cacheHitTokens += Number(item.cache_hit_tokens ?? 0);
+    bucket.costUsd += Number(item.cost_usd ?? 0);
+    buckets.set(day, bucket);
+  }
+  return [...buckets.values()].sort((left, right) => right.date.localeCompare(left.date));
+}
+
+/**
+ * Reduce a digest to its key points, for the "краткий" view.
+ *
+ * @param {Array<{title: string, bullets: string[]}>} topics
+ * @param {number} [perTopic] how many bullets to keep
+ */
+export function briefTopics(topics, perTopic = 2) {
+  return (topics ?? []).map((topic) => ({
+    title: topic.title,
+    bullets: (topic.bullets ?? []).slice(0, perTopic),
+  }));
+}
+
+/** Build the suggested file name for a downloaded digest. */
+export function digestFileName(digest) {
+  const safeChannel = String(digest?.channel_title ?? "digest")
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+  return `${digest?.id ?? "digest"}-${safeChannel || "digest"}.md`;
+}

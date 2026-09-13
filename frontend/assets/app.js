@@ -14,7 +14,6 @@ import { createGitHub } from "./api.js";
 import { WrongPinError, openVault } from "./crypto.js";
 import { clear, el, field, setStatus, statusLine } from "./dom.js";
 import { clearVault, loadRepo, loadVault } from "./local.js";
-import { sanitizeHtml } from "./sanitize.js";
 import {
   PATHS,
   formatMoment,
@@ -25,6 +24,11 @@ import {
   setupSteps,
   usageSummary,
 } from "./state.js";
+import {
+  createDigestScreen,
+  createSettingsScreen,
+  createStatsScreen,
+} from "./screens.js";
 import { MODEL, tariffLabel, tariffSnapshot } from "./tariff.js";
 import { createWizard } from "./wizard.js";
 
@@ -275,17 +279,58 @@ async function render() {
     showView("wizard");
     return;
   }
-  renderDashboard();
+  renderApp();
   showView("app");
 }
 
-// -- the dashboard ------------------------------------------------------------
+// -- the application ----------------------------------------------------------
 
-/** Render channels, recent digests and the verification panel. */
-function renderDashboard() {
-  const node = views.app;
-  clear(node);
+/** Which tab is open; kept across re-renders. */
+let activeTab = "channels";
 
+/** The tabs to show once setup is complete. */
+function tabs() {
+  const screens = { snapshot, client: context.client, refresh: loadAndRender };
+  return [
+    { id: "channels", title: "Каналы", build: () => createChannelsTab() },
+    { id: "digests", title: "Дайджесты", build: () => createDigestScreen(screens) },
+    { id: "settings", title: "Настройки", build: () => createSettingsScreen(screens) },
+    { id: "stats", title: "Статистика", build: () => createStatsScreen(screens) },
+  ];
+}
+
+/** Render the tab bar and the active tab. */
+function renderApp() {
+  clear(views.app);
+  const entries = tabs();
+  if (!entries.some((entry) => entry.id === activeTab)) {
+    activeTab = entries[0].id;
+  }
+
+  views.app.append(
+    el(
+      "nav",
+      { class: "tabs" },
+      entries.map((entry) =>
+        el("button", {
+          class: `tab${entry.id === activeTab ? " tab--active" : ""}`,
+          type: "button",
+          text: entry.title,
+          on: {
+            click: () => {
+              activeTab = entry.id;
+              renderApp();
+            },
+          },
+        }),
+      ),
+    ),
+  );
+  views.app.append(entries.find((entry) => entry.id === activeTab).build());
+}
+
+/** Channels, the run buttons and the last verification table. */
+function createChannelsTab() {
   const status = statusLine();
   const runRow = el("div", { class: "row" }, [
     el("button", {
@@ -321,22 +366,19 @@ function renderDashboard() {
     }),
   ]);
 
-  node.append(
-    el("section", { class: "card" }, [
-      el("h1", { text: "Дашборд" }),
-      el("p", {
-        class: "lede",
-        text: snapshot.channels.length
-          ? `Каналов: ${snapshot.channels.length}. Период — у каждого свой.`
-          : "Каналов пока нет.",
-      }),
-      runRow,
-      status,
-      renderChannels(),
-      renderSetupTable(),
-    ]),
-    renderDigests(),
-  );
+  return el("section", { class: "card" }, [
+    el("h1", { text: "Каналы" }),
+    el("p", {
+      class: "lede",
+      text: snapshot.channels.length
+        ? `Каналов: ${snapshot.channels.length}. Период — у каждого свой.`
+        : "Каналов пока нет.",
+    }),
+    runRow,
+    status,
+    renderChannels(),
+    renderSetupTable(),
+  ]);
 }
 
 /** The channel list with a per-channel run button. */
@@ -401,55 +443,6 @@ function renderSetupTable() {
       ),
     ),
   ]);
-}
-
-/** Recent digests, newest first. */
-function renderDigests() {
-  const card = el("section", { class: "card" }, [el("h2", { text: "Последние дайджесты" })]);
-  const preview = el("div", { class: "digest" });
-
-  if (!snapshot.digests.length) {
-    card.append(el("p", { class: "muted", text: "Пока ничего не собрано." }));
-    return card;
-  }
-
-  card.append(
-    el(
-      "ul",
-      { class: "list" },
-      snapshot.digests.slice(0, 20).map((item) =>
-        el("li", { class: "list__item" }, [
-          el("div", {}, [
-            el("span", { class: "list__title", text: item.channel_title }),
-            el("span", {
-              class: "list__sub",
-              text: ` ${formatMoment(item.period_end)} · ${item.messages_used} сообщений · ${formatUsd(item.cost_usd)}`,
-            }),
-          ]),
-          el("button", {
-            class: "button",
-            type: "button",
-            text: "Открыть",
-            on: {
-              click: async () => {
-                const stored = await context.client.readJson(`data/digests/${item.id}.json`);
-                clear(preview);
-                if (!stored) {
-                  preview.append(el("p", { class: "status status--error", text: "Дайджест не найден." }));
-                  return;
-                }
-                // Second layer of defence: the backend already whitelisted the markup,
-                // and this refuses to insert anything that is not on the list.
-                preview.append(sanitizeHtml(stored.data.html ?? ""));
-              },
-            },
-          }),
-        ]),
-      ),
-    ),
-    preview,
-  );
-  return card;
 }
 
 // -- actions ------------------------------------------------------------------

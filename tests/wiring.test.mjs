@@ -13,7 +13,7 @@ import { test } from "node:test";
 import { buildChannel, mergeTelegramSettings } from "../frontend/assets/wizard.js";
 
 const ROOT = new URL("../", import.meta.url);
-const ASSETS = ["api.js", "app.js", "blake2b.js", "bytes.js", "crypto.js", "dom.js", "local.js", "sanitize.js", "seal.js", "state.js", "tariff.js", "wizard.js"];
+const ASSETS = ["api.js", "app.js", "blake2b.js", "bytes.js", "crypto.js", "dom.js", "local.js", "sanitize.js", "screens.js", "seal.js", "state.js", "tariff.js", "telegram.js", "wizard.js"];
 
 /** Read a frontend asset as text. */
 async function readAsset(name) {
