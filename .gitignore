@@ -1,1 +1,7 @@
-Nothing should be ignored based on the provided file changes. The only added file is a Kotlin source file (.kt), which is source code and should not be ignored. There are no build artifacts, dependencies, or temporary files in the changes that would warrant adding ignore rules.
+# Nothing here is built, so only editor and OS noise is ignored.
+.DS_Store
+Thumbs.db
+
+# Local preview artefacts
+*.log
+node_modules/

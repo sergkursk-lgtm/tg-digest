@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>tg-digest</title>
+    <meta name="description" content="Дайджесты из Telegram-каналов через DeepSeek" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="stylesheet" href="./assets/theme.css" />
+    <script>
+      // Resolve the theme before the first paint, so the page never flashes
+      // the wrong colours. The stored value is the user's choice:
+      // "system" | "light" | "dark".
+      (function () {
+        var theme = "system";
+        try {
+          theme = localStorage.getItem("tg-digest.theme") || "system";
+        } catch (error) {
+          theme = "system";
+        }
+        var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        var dark = theme === "dark" || (theme !== "light" && prefersDark);
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+      })();
+    </script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand__mark" aria-hidden="true">tg</span>
+        <span class="brand__name">tg-digest</span>
+      </div>
+      <button id="theme-toggle" class="ghost-button" type="button">Тема: системная</button>
+    </header>
+
+    <main class="shell">
+      <section class="card">
+        <h1>Оболочка опубликована</h1>
+        <p class="lede">
+          Это клиентская часть приложения. Здесь не будет ни секретов, ни данных:
+          браузер работает с GitHub API от вашего имени по токену, который вы вводите сами.
+        </p>
+
+        <h2>Что уже готово</h2>
+        <ul class="checklist">
+          <li>Светлая и тёмная темы с учётом системной настройки</li>
+          <li>Индикатор текущего тарифа DeepSeek в подвале</li>
+        </ul>
+
+        <h2>Что дальше</h2>
+        <ol class="checklist checklist--ordered">
+          <li>PIN-гейт: PIN расшифровывает токен GitHub, ничего не хранится в открытом виде</li>
+          <li>Настройки: форма секретов и чек-лист</li>
+          <li>Каналы: добавление и удаление</li>
+          <li>Дашборд: запуск дайджеста и статус прогона</li>
+          <li>Дайджест, шаблоны, статистика стоимости</li>
+        </ol>
+
+        <p class="muted">
+          Бэкенд и данные живут в приватном репозитории
+          <a href="https://github.com/sergkursk-lgtm/tg-digest-core">tg-digest-core</a>.
+        </p>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span id="tariff" class="footer__tariff">определяем тариф…</span>
+      <span class="footer__muted">модель: <span id="footer-model">deepseek-flash</span></span>
+    </footer>
+
+    <script type="module" src="./assets/app.js"></script>
+  </body>
+</html>
