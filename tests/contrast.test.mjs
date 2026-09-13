@@ -157,16 +157,27 @@ test("button-like primitives centre their own label", () => {
   }
 });
 
-test("a keypad key has thickness and sinks when pressed", () => {
-  const at = CSS.indexOf(".numpad__key {");
-  const rule = CSS.slice(at, CSS.indexOf("}", at));
-  // A solid bottom edge under a soft shadow is what makes a key look raised.
-  assert.match(rule, /box-shadow:[^;]*0 2px 0/, "the key has no bottom edge");
+test("buttons stand on a wall and sink into it when pressed", () => {
+  // `--lift` is both the height of the side wall and the distance a press travels, which
+  // is what makes a press read as pushing the button down rather than shaking it.
+  const tokens = tokensFor(":root {");
+  assert.equal(tokens.get("--lift"), "3px");
 
-  const pressedAt = CSS.indexOf(".numpad__key:active");
-  const pressed = CSS.slice(pressedAt, CSS.indexOf("}", pressedAt));
-  assert.match(pressed, /translateY\(2px\)/, "pressing the key must move it down");
-  assert.match(pressed, /box-shadow:\s*0 0 0/, "the bottom edge must disappear under the key");
+  for (const selector of [".btn", ".chip", ".numpad__key", ".fab"]) {
+    const at = CSS.indexOf(`${selector} {`);
+    const rule = CSS.slice(at, CSS.indexOf("}", at));
+    assert.match(rule, /box-shadow:[^;]*0 var\(--lift\) 0/, `${selector} has no side wall`);
+    assert.match(rule, /inset 0 1px 0/, `${selector} has no lit top edge`);
+
+    const pressedAt = CSS.indexOf(`${selector}:active`);
+    const pressed = CSS.slice(pressedAt, CSS.indexOf("}", pressedAt));
+    assert.match(
+      pressed,
+      /translateY\(var\(--lift\)\)/,
+      `${selector} must travel down by its own thickness`,
+    );
+    assert.match(pressed, /box-shadow:\s*0 0 0/, `${selector} must lose its wall on press`);
+  }
 });
 
 test("only compositor-friendly properties are animated", () => {

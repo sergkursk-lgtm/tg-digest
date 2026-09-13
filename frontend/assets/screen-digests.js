@@ -108,6 +108,30 @@ function saveThread(digestId, entries) {
   }
 }
 
+/**
+ * One bubble in the question thread.
+ *
+ * Just the text. The answer file still records which messages were used, but listing them
+ * under every answer turned a conversation into an index, and the reader asked for the
+ * answer.
+ */
+export function askBubble({ role, text }) {
+  return el("div", {
+    class: `bubble bubble--${role === "me" ? "mine" : "theirs"}`,
+    text,
+  });
+}
+
+/** Bring the newest entry into view, without fighting a reduced-motion preference. */
+function scrollToNewest(container) {
+  const newest = container.lastElementChild;
+  if (!newest?.scrollIntoView) {
+    return;
+  }
+  const calm = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  newest.scrollIntoView({ block: "nearest", behavior: calm ? "auto" : "smooth" });
+}
+
 /** Download a string as a file. */
 function downloadText(name, text, type = "text/markdown;charset=utf-8") {
   const blob = new Blob([text], { type });
@@ -620,42 +644,12 @@ export function createDigestDetail(ctx, digestId) {
     );
   }
 
-  /** One answer bubble, with links to the messages it was built from. */
-  function bubbleFor(entry) {
-    const bubble = el("div", {
-      class: `bubble bubble--${entry.role === "me" ? "mine" : "theirs"}`,
-      text: entry.text,
-    });
-    const refs = (entry.refs ?? []).filter((ref) => ref?.link);
-    if (!refs.length) {
-      return bubble;
-    }
-    // Links, not quotes: raw message text is never stored (TASK.md §12), and a link is
-    // what the reader actually wants to follow anyway.
-    return el("div", { class: "bubble-group" }, [
-      bubble,
-      el(
-        "div",
-        { class: "refs" },
-        refs.map((ref) =>
-          el("a", {
-            class: "ref",
-            href: ref.link,
-            target: "_blank",
-            rel: "noopener noreferrer",
-            text: `Сообщение от ${formatMoment(ref.date)}`,
-          }),
-        ),
-      ),
-    ]);
-  }
-
   /** The question line plus the answers collected so far. */
   function renderAskBlock() {
     const list = el(
       "div",
       { class: "thread" },
-      thread.map((entry) => bubbleFor(entry)),
+      thread.map((entry) => askBubble(entry)),
     );
     if (!thread.length) {
       list.append(
@@ -769,17 +763,14 @@ export function createDigestDetail(ctx, digestId) {
         return;
       }
 
-      const entry = {
-        role: "ai",
-        text: answer.answer,
-        refs: answer.messages ?? [],
-        at: new Date().toISOString(),
-      };
-      // `bubbleFor` is what the saved entry is rendered with on the next visit.
+      const entry = { role: "ai", text: answer.answer, at: new Date().toISOString() };
       thread.push(entry);
       saveThread(digestId, thread);
-      list.append(bubbleFor(entry));
+      list.append(askBubble(entry));
       haptic("success");
+      // The thread is at the bottom of a long article, so bring the answer to the reader
+      // instead of leaving them to scroll for it.
+      scrollToNewest(list);
     } catch (error) {
       pending.remove();
       list.append(el("div", { class: "bubble bubble--theirs", text: error.message }));

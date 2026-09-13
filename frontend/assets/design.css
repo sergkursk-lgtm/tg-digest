@@ -61,6 +61,14 @@
   --shadow-1: 0 1px 2px rgb(16 24 40 / 5%), 0 1px 3px rgb(16 24 40 / 4%);
   --shadow-2: 0 2px 8px rgb(16 24 40 / 6%), 0 12px 32px rgb(16 24 40 / 10%);
 
+  /* Buttons are objects, not flat rectangles: they stand on a solid side wall and press
+     down into it. `--lift` is that wall's height, and it is the distance a press travels. */
+  --lift: 3px;
+  --edge: #c6ccd8;
+  --edge-accent: #1c4ed8;
+  --edge-danger: #9e2b11;
+  --highlight: rgb(255 255 255 / 88%);
+
   /* motion */
   --dur-press: 90ms;
   --dur-fast: 140ms;
@@ -104,6 +112,12 @@
 
   --shadow-1: 0 1px 2px rgb(0 0 0 / 40%);
   --shadow-2: 0 2px 8px rgb(0 0 0 / 45%), 0 12px 32px rgb(0 0 0 / 45%);
+
+  --lift: 3px;
+  --edge: #333a46;
+  --edge-accent: #4a76e0;
+  --edge-danger: #c96a55;
+  --highlight: rgb(255 255 255 / 8%);
 }
 
 /* -- base ------------------------------------------------------------------- */
@@ -305,16 +319,25 @@ a {
   cursor: pointer;
   user-select: none;
   touch-action: manipulation;
+  box-shadow:
+    0 var(--lift) 0 var(--edge),
+    var(--shadow-1),
+    inset 0 1px 0 var(--highlight);
   /* Press feedback first: it must land inside the ~100ms the eye needs to trust a tap. */
   transition:
     transform var(--dur-press) var(--ease-out),
     background-color var(--dur-fast) var(--ease-out),
-    box-shadow var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-press) var(--ease-out),
     opacity var(--dur-fast) var(--ease-out);
 }
 
+/* A press travels down by exactly the height of the wall, which disappears underneath:
+   the button ends up sitting on the surface it stood on. */
 .btn:active:not(:disabled) {
-  transform: scale(0.97);
+  transform: translateY(var(--lift)) scale(0.99);
+  box-shadow:
+    0 0 0 var(--edge),
+    inset 0 1px 0 var(--highlight);
 }
 
 .btn:disabled {
@@ -325,7 +348,10 @@ a {
 .btn--primary {
   background: var(--accent);
   color: var(--accent-ink);
-  box-shadow: var(--shadow-1);
+  box-shadow:
+    0 var(--lift) 0 var(--edge-accent),
+    var(--shadow-1),
+    inset 0 1px 0 rgb(255 255 255 / 28%);
 }
 
 .btn--primary:hover:not(:disabled) {
@@ -334,7 +360,9 @@ a {
 
 /* Pressing a raised button should feel like pushing it down, not like shaking it. */
 .btn--primary:active:not(:disabled) {
-  box-shadow: none;
+  box-shadow:
+    0 0 0 var(--edge-accent),
+    inset 0 1px 0 rgb(255 255 255 / 28%);
 }
 
 .btn--ghost {
@@ -346,17 +374,35 @@ a {
   border-color: var(--border-strong);
 }
 
+/* Quiet buttons have no surface to stand on, so they flash instead of sinking. */
 .btn--quiet {
   min-height: 40px;
   background: none;
   border: none;
   color: var(--accent);
   padding: 0 var(--s2);
+  box-shadow: none;
+}
+
+.btn--quiet:active:not(:disabled) {
+  transform: scale(0.96);
+  background: var(--surface-2);
+  box-shadow: none;
 }
 
 .btn--danger {
   background: var(--danger-soft);
   color: var(--danger);
+  box-shadow:
+    0 var(--lift) 0 var(--edge-danger),
+    var(--shadow-1),
+    inset 0 1px 0 var(--highlight);
+}
+
+.btn--danger:active:not(:disabled) {
+  box-shadow:
+    0 0 0 var(--edge-danger),
+    inset 0 1px 0 var(--highlight);
 }
 
 .btn--block {
@@ -395,17 +441,23 @@ a {
   color: var(--accent-ink);
   font: inherit;
   font-weight: 600;
-  box-shadow: var(--shadow-2);
+  box-shadow:
+    0 var(--lift) 0 var(--edge-accent),
+    var(--shadow-2),
+    inset 0 1px 0 rgb(255 255 255 / 28%);
   cursor: pointer;
   transition:
     transform var(--dur-press) var(--ease-out),
     background-color var(--dur-fast) var(--ease-out),
-    box-shadow var(--dur-fast) var(--ease-out);
+    box-shadow var(--dur-press) var(--ease-out);
 }
 
 .fab:active {
-  transform: scale(0.96);
-  box-shadow: var(--shadow-1);
+  transform: translateY(var(--lift)) scale(0.99);
+  box-shadow:
+    0 0 0 var(--edge-accent),
+    var(--shadow-1),
+    inset 0 1px 0 rgb(255 255 255 / 28%);
 }
 
 /* -- cards and rows --------------------------------------------------------- */
@@ -662,21 +714,39 @@ a {
   font: inherit;
   font-weight: 600;
   cursor: pointer;
+  box-shadow:
+    0 var(--lift) 0 var(--edge),
+    var(--shadow-1),
+    inset 0 1px 0 var(--highlight);
   transition:
     transform var(--dur-press) var(--ease-out),
     background-color var(--dur-fast) var(--ease-out),
     border-color var(--dur-fast) var(--ease-out),
-    color var(--dur-fast) var(--ease-out);
+    color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-press) var(--ease-out);
 }
 
 .chip:active {
-  transform: scale(0.96);
+  transform: translateY(var(--lift)) scale(0.99);
+  box-shadow:
+    0 0 0 var(--edge),
+    inset 0 1px 0 var(--highlight);
 }
 
 .chip--on {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-ink);
+  box-shadow:
+    0 var(--lift) 0 var(--edge-accent),
+    var(--shadow-1),
+    inset 0 1px 0 rgb(255 255 255 / 28%);
+}
+
+.chip--on:active {
+  box-shadow:
+    0 0 0 var(--edge-accent),
+    inset 0 1px 0 rgb(255 255 255 / 28%);
 }
 
 /* -- tab bar ---------------------------------------------------------------- */
@@ -818,11 +888,12 @@ a {
   font-size: 24px;
   font-weight: 600;
   cursor: pointer;
-  /* A key looks like a key when it has thickness: a solid bottom edge under a soft
-     shadow reads as height, which a flat hairline border does not. */
+  /* A key looks like a key when it has thickness: a solid side wall under a soft shadow
+     and a lit top edge read as height, which a flat hairline border does not. */
   box-shadow:
-    0 2px 0 var(--border-strong),
-    var(--shadow-1);
+    0 var(--lift) 0 var(--edge),
+    var(--shadow-1),
+    inset 0 1px 0 var(--highlight);
   transition:
     transform var(--dur-press) var(--ease-out),
     background-color var(--dur-fast) var(--ease-out),
@@ -830,11 +901,13 @@ a {
 }
 
 /* Pressing sinks the key onto the surface: it travels down by its own thickness and the
-   edge disappears under it. */
+   wall disappears under it. */
 .numpad__key:active:not(:disabled) {
-  transform: translateY(2px) scale(0.99);
+  transform: translateY(var(--lift)) scale(0.99);
   background: var(--surface-2);
-  box-shadow: 0 0 0 var(--border-strong);
+  box-shadow:
+    0 0 0 var(--edge),
+    inset 0 1px 0 var(--highlight);
 }
 
 .numpad__key:disabled {
@@ -1115,39 +1188,6 @@ a {
   display: flex;
   gap: var(--s2);
   align-items: flex-end;
-}
-
-.bubble-group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s1);
-  align-self: flex-start;
-  max-width: 92%;
-}
-
-.bubble-group .bubble {
-  max-width: 100%;
-}
-
-.refs {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--s1);
-}
-
-.ref {
-  font-size: 13px;
-  color: var(--accent);
-  text-decoration: none;
-  padding: var(--s1) var(--s2);
-  border-radius: var(--r-sm);
-  background: var(--accent-soft);
-  transition: background-color var(--dur-fast) var(--ease-out);
-}
-
-.ref:active {
-  background: var(--surface-2);
 }
 
 .ask .input {

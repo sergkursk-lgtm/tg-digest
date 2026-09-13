@@ -177,6 +177,32 @@ test("an empty project is offered the one useful action", async () => {
   assert.equal(empty.floating, null, "nothing to collect from");
 });
 
+test("an answer is one bubble, with no list of messages under it", async () => {
+  const { askBubble } = await load("screen-digests.js");
+
+  const mine = askBubble({ role: "me", text: "что там про руль?" });
+  assert.equal(mine.className, "bubble bubble--mine");
+  assert.equal(mine.textContent, "что там про руль?");
+
+  const theirs = askBubble({ role: "ai", text: "Калибровка помогла." });
+  assert.equal(theirs.className, "bubble bubble--theirs");
+  // Nothing follows the answer: no links, no second element.
+  assert.equal(theirs.children.length, 0);
+  assert.equal(all(theirs, (child) => child.tagName === "A").length, 0);
+
+  // Even an entry saved by an older version, which carried `refs`, renders as one bubble.
+  const legacy = askBubble({ role: "ai", text: "Ответ", refs: [{ link: "https://t.me/c/1/2" }] });
+  assert.equal(legacy.textContent, "Ответ");
+  assert.equal(all(legacy, (child) => child.tagName === "A").length, 0);
+});
+
+test("no styles are left for the removed message list", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const css = await readFile(new URL("../frontend/assets/design.css", import.meta.url), "utf8");
+  assert.ok(!/\.refs\b/.test(css), "the .refs rules should be gone");
+  assert.ok(!/\.bubble-group\b/.test(css), "the .bubble-group rules should be gone");
+});
+
 test("opening a digest renders the brief view and the ask box", async () => {
   const { createDigestDetail } = await load("screen-digests.js");
   const digest = {
