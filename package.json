@@ -6,6 +6,7 @@
   "description": "Static UI for tg-digest: GitHub Pages, ES modules, no bundler.",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "verify-seal": "node tools/verify-seal.mjs"
+    "verify-seal": "node tools/verify-seal.mjs",
+    "smoke": "node tools/smoke-api.mjs"
   }
 }

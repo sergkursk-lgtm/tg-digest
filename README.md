@@ -38,14 +38,22 @@
 Сборка не нужна: файлы отдаются как есть.
 
 ```bash
-# тесты фронтенда (правила тарифа peak/off-peak)
+# тесты фронтенда
 node --test tests/*.test.mjs
 
 # локальный просмотр
 python3 -m http.server 8000 --directory frontend
+
+# проверка на живом репозитории (нужен токен): читает все файлы, которые читает UI,
+# и опционально запускает digest.yml в режиме dry-run
+GITHUB_TOKEN=... node tools/smoke-api.mjs [--dispatch]
+
+# проверка, что запечатывание секретов принимается GitHub
+GITHUB_TOKEN=... node tools/verify-seal.mjs
 ```
 
-Правила проекта — в [`AGENTS.md`](AGENTS.md).
+Правила проекта — в [`AGENTS.md`](AGENTS.md), назначение вендорного кода —
+в [`frontend/vendor/README.md`](frontend/vendor/README.md).
 
 ## Деньги
 

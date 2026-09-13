@@ -21,11 +21,22 @@
 
 ```
 frontend/
-  index.html          — единственная страница, точки монтирования экранов
+  index.html          — единственная страница и контейнеры экранов
   assets/theme.css    — токены тем и вёрстка
-  assets/app.js       — точка входа UI
+  assets/app.js       — точка входа: PIN-гейт, роутинг, дашборд, подвал
+  assets/wizard.js    — мастер первого запуска
+  assets/state.js     — чтение ветки data и правила «что настроено» (чистые функции)
+  assets/api.js       — клиент GitHub API (Contents, Actions, Secrets)
+  assets/crypto.js    — PIN → PBKDF2 → AES-GCM для хранения токена
+  assets/seal.js      — libsodium sealed box поверх tweetnacl
+  assets/blake2b.js   — BLAKE2b с настраиваемой длиной (нужен для nonce)
+  assets/sanitize.js  — белый список HTML для дайджеста
+  assets/dom.js       — безопасный DOM: никаких innerHTML для внешних данных
+  assets/local.js     — localStorage: репозиторий и зашифрованный токен
   assets/tariff.js    — peak/off-peak (зеркало backend/pricing.py)
+  vendor/             — вендорные библиотеки, см. vendor/README.md
 tests/                — тесты на Node, вне frontend/, чтобы не публиковаться
+tools/                — ручные проверки на живом репозитории
 .github/workflows/pages.yml — тесты + публикация на Pages
 ```
 
