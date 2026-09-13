@@ -117,10 +117,10 @@ export function variantsOf(digest) {
   return [];
 }
 
-/** How many styles a run will write, in words, for the sheet's summary line. */
-function styleCount(presets) {
-  const total = (presets ?? []).length || 1;
-  return `${total} ${plural(total, ["стиль", "стиля", "стилей"])}`;
+/** The style a run will write, named for the sheet's summary line. */
+function styleName(presets) {
+  const list = presets ?? [];
+  return (list.find((preset) => preset.is_default) ?? list[0])?.name ?? "стиль по умолчанию";
 }
 
 /** Format the period a digest covers. */
@@ -536,7 +536,7 @@ export function openNewDigestSheet(ctx) {
     const list = [...selected];
     const layout = templates.find((entry) => entry.id === templateId)?.name;
     summary.textContent = list.length
-      ? [channelCount(list.length), `${hours} ч`, styleCount(snapshot.presets), layout]
+      ? [channelCount(list.length), `${hours} ч`, styleName(snapshot.presets), layout]
           .filter(Boolean)
           .join(" · ")
       : "Ни один канал не выбран";
@@ -746,8 +746,6 @@ export async function runDigest(ctx, { channelIds, periodHours, templateId = nul
 export function createDigestDetail(ctx, digestId) {
   const node = screen([skeletonRows(3)]);
   let digest = null;
-  let choice = 0;
-  let mode = "brief";
   const thread = loadThread(digestId);
 
   /** Draw the article. */
@@ -757,18 +755,22 @@ export function createDigestDetail(ctx, digestId) {
       return;
     }
 
+    // One version, whole. There is no fold and no style to switch to: the reader asked for
+    // the analytical digest in full, and five buttons above the text were five decisions to
+    // make before reading anything.
     const variants = variantsOf(digest);
-    const current = variants[choice] ?? variants[0] ?? { topics: [], markdown: "", html: "" };
+    const current = variants[0] ?? { preset_name: "", topics: [], markdown: "", html: "" };
     const topics = current.topics ?? [];
-    const shown = mode === "brief" ? briefTopics(topics, 2) : topics;
 
     const article = el("div", { class: "digest" });
-    if (mode === "full") {
+    if (current.html) {
       // Foreign HTML: the digest was built from Telegram messages, so it goes through the
       // whitelist sanitiser before it reaches the DOM.
-      article.append(sanitizeHtml(current.html ?? ""));
-    } else if (shown.length) {
-      for (const topic of shown) {
+      article.append(sanitizeHtml(current.html));
+    } else if (current.markdown) {
+      article.append(el("p", { class: "muted", text: current.markdown }));
+    } else if (topics.length) {
+      for (const topic of topics) {
         article.append(el("h3", { text: topic.title }));
         article.append(
           el(
@@ -779,77 +781,23 @@ export function createDigestDetail(ctx, digestId) {
         );
       }
     } else {
-      article.append(el("p", { class: "muted", text: current.markdown ?? "Пусто." }));
+      article.append(el("p", { class: "muted", text: "Пусто." }));
     }
 
-    // The header block is a stack: rows of raised chips have no gap of their own, and a
-    // chip's side wall is painted below its box, so stacked rows overlapped by exactly that.
     node.append(
       el("div", { class: "stack" }, [
         el("div", {}, [
           el("h1", { text: digest.channel_title ?? "дайджест" }),
-          el("p", { class: "small muted", text: periodLabel(digest) }),
-        ]),
-      // The styles this one digest holds. Switching is just choosing a different version of
-      // the same period, so the questions below stay where they are.
-      variants.length > 1
-        ? el(
-            "div",
-            { class: "chips" },
-            variants.map((variant, index) =>
-              el("button", {
-                class: `chip${index === choice ? " chip--on" : ""}`,
-                type: "button",
-                text: variant.preset_name || `Стиль ${index + 1}`,
-                on: {
-                  click: () => {
-                    haptic("select");
-                    choice = index;
-                    render();
-                  },
-                },
-              }),
-            ),
-          )
-        : el("div", { class: "row" }, [
+          el("div", { class: "row" }, [
+            // The style is no longer chosen here, but it is still named: the text should
+            // never be anonymous.
             el("span", {
               class: "badge badge--quiet",
               text: current.preset_name || "стиль не записан",
             }),
+            el("span", { class: "small muted", text: periodLabel(digest) }),
           ]),
-      el("div", { class: "chips" }, [
-        el("button", {
-          class: `chip${mode === "brief" ? " chip--on" : ""}`,
-          type: "button",
-          text: "Тезисы",
-          on: {
-            click: () => {
-              haptic("select");
-              mode = "brief";
-              render();
-            },
-          },
-        }),
-        el("button", {
-          class: `chip${mode === "full" ? " chip--on" : ""}`,
-          type: "button",
-          text: "Весь текст",
-          on: {
-            click: () => {
-              haptic("select");
-              mode = "full";
-              render();
-            },
-          },
-        }),
-      ]),
-        el("p", {
-          class: "small muted",
-          text:
-            mode === "brief"
-              ? `По два тезиса на тему. Стиль: ${current.preset_name || "не записан"}.`
-              : `Дайджест целиком, как его собрала модель. Стиль: ${current.preset_name || "не записан"}.`,
-        }),
+        ]),
       ]),
       // The cost and token counts are not shown here: the reader opened a digest to read
       // it, and the money is accounted for in settings.

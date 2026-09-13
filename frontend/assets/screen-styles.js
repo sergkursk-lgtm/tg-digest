@@ -6,6 +6,9 @@
  * between versions of the same digest. A *layout* decides how the result is arranged —
  * a run writes one document, so it is chosen before the run starts.
  *
+ * One style is in use at a time — the one marked as main — and the digest screen shows it
+ * whole, so this list is where the style is chosen rather than a switch inside a digest.
+ *
  * A style's dictated text goes into `user_prompt_style`, which the backend wraps in a
  * `<<STYLE>>` block marked as style rather than instructions. The *system* prompt itself
  * stays hardcoded in `backend/prompts.py` and cannot be edited from a page: a text box that
@@ -448,10 +451,12 @@ export function templatesAccordion(ctx) {
   return el("details", { class: "accordion" }, [
     el("summary", { text: `Шаблоны и стили: ${presets.length} и ${templates.length}` }),
     el("div", { class: "accordion__body" }, [
-      el("h3", { class: "small muted", text: "Стили: как писать" }),
+      el("h3", { class: "small muted", text: "Стиль: как писать" }),
       el("p", {
         class: "small muted",
-        text: "Каждый прогон пишет все стили сразу, поэтому новый стиль — это ещё один вариант в каждом дайджесте.",
+        // No switching in the app: the digest is always written in the main style and shown
+        // whole. This is where that style is chosen — by marking another one as main.
+        text: "Приложение пишет дайджест одним стилем — основным. Чтобы сменить стиль, отметьте другой как основной.",
       }),
       presets.length
         ? el(

@@ -184,7 +184,18 @@ class FakeNode {
  */
 export async function withDom(specifier = "../frontend/assets/ui.js") {
   const document = {
-    createElement: (tag) => new FakeNode(tag),
+    createElement: (tag) => {
+      const node = new FakeNode(tag);
+      if (String(tag).toLowerCase() === "template") {
+        // `sanitizeHtml` parses into a detached template and then walks its content. A real
+        // browser does the parsing; this stand-in cannot, so the template it hands back holds
+        // an empty fragment and the sanitiser returns nothing. Its own decisions are covered
+        // against a prepared tree in sanitize.test.mjs, and the browser path is checked on a
+        // live screen with tools/layout-audit.js.
+        node.content = new FakeNode("#fragment");
+      }
+      return node;
+    },
     createElementNS: (ns, tag) => new FakeNode(tag, ns),
     createTextNode: (text) => ({ nodeType: 3, textContent: text, children: [] }),
     body: new FakeNode("body"),

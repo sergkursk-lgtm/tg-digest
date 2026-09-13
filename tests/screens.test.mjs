@@ -291,7 +291,7 @@ test("the new-digest sheet offers the layouts and promises nothing about the bot
   const sheet = openNewDigestSheet(context({ client: {}, snapshot: snapshot() }));
   const text = textOf(sheet.body ?? sheet.root);
 
-  assert.match(text, /1 канал · 24 ч · 2 стиля · По умолчанию/);
+  assert.match(text, /1 канал · 24 ч · Краткий · По умолчанию/);
   assert.ok(!text.includes("в бота"), "digests are not sent anywhere");
 
   // Every layout is offered, and the default one is selected.
@@ -463,68 +463,42 @@ const DIGEST = {
   usage: { tokens_in: 100, tokens_out: 20, cost_usd: 0.001 },
 };
 
-test("a digest with three styles opens a switcher, not a mystery", async () => {
-  // The reader asked "where is the analytical one?" while looking at an analytical digest:
-  // nothing on the screen said so, and the reading toggle was called "Краткий".
+test("a digest shows the whole text, with no buttons above it", async () => {
+  // The reader asked for the analytical digest in full and no switching: five chips above
+  // the text were five decisions to make before reading anything.
   const screen = await openDigest(THREE_STYLE_DIGEST);
-  const text = textOf(screen.node);
-
-  // One button per style, the first one on.
-  const chips = all(screen.node, (child) => child.classList?.contains("chip"));
-  assert.deepEqual(
-    chips.map((chip) => textOf(chip)),
-    ["Краткий", "Детальный", "Аналитический", "Тезисы", "Весь текст"],
-  );
-  assert.equal(chips[0].classList.contains("chip--on"), true, "the primary style is open");
-  assert.equal(chips[2].classList.contains("chip--on"), false);
-
-  // The caption names the style that is on screen, so the text is never anonymous.
-  assert.match(text, /Стиль: Краткий/);
-});
-
-test("switching the style shows that style's text", async () => {
-  const screen = await openDigest(THREE_STYLE_DIGEST);
-  const chips = () => all(screen.node, (child) => child.classList?.contains("chip"));
-
-  assert.match(textOf(screen.node), /тезис кратко/);
-
-  chips().find((chip) => textOf(chip) === "Аналитический").fire("click");
-
-  const text = textOf(screen.node);
-  assert.match(text, /причина и следствие/, "the analytical wording is on screen");
-  assert.ok(!text.includes("тезис кратко"), "and the brief one is not");
-  assert.equal(chips().find((chip) => textOf(chip) === "Аналитический").classList.contains("chip--on"), true);
-  assert.match(text, /Стиль: Аналитический/);
-});
-
-test("a one-style digest needs no switcher", async () => {
-  // A digest built by an older version, or by a manual run with one style.
-  const screen = await openDigest(DIGEST);
-  const chips = all(screen.node, (child) => child.classList?.contains("chip")).map((chip) =>
-    textOf(chip),
-  );
-  // Only the reading toggle: there is nothing to switch between.
-  assert.deepEqual(chips, ["Тезисы", "Весь текст"]);
-  assert.match(textOf(screen.node), /Аналитический/);
-});
-
-test("the reading toggle switches how much is shown, not which digest it is", async () => {
-  const screen = await openDigest(DIGEST);
-  const text = () => textOf(screen.node);
-
-  // The default view folds the digest to two bullets per topic and says so.
-  assert.match(text(), /По два тезиса на тему/);
-  assert.match(text(), /калибровка помогла/);
 
   const chips = all(screen.node, (child) => child.classList?.contains("chip"));
-  assert.equal(textOf(chips[0]), "Тезисы");
-  assert.equal(textOf(chips[1]), "Весь текст");
-  assert.equal(chips[0].classList.contains("chip--on"), true, "the folded view is the default");
-  assert.equal(chips[1].classList.contains("chip--on"), false);
+  assert.deepEqual(chips, [], "there is nothing to switch");
 
-  // Switching to the whole text re-renders the article from the stored HTML. That path runs
-  // the sanitiser, which needs a real DOM and has its own tests in sanitize.test.mjs; what is
-  // checked here is that the toggle offers it and the view starts folded.
+  // The style is still named, so the text is never anonymous.
+  const badge = all(screen.node, (child) => child.classList?.contains("badge"))[0];
+  assert.ok(badge, "the style is on screen");
+  assert.equal(textOf(badge), "Краткий");
+
+  // And nothing asks how much to show: the whole version is rendered.
+  assert.match(textOf(screen.node), /Стиль|Краткий/);
+  assert.ok(!/Тезисы|Весь текст/.test(textOf(screen.node)), "no fold toggle");
+});
+
+test("a digest without stored HTML falls back to its own text, in full", async () => {
+  // The browser path renders the stored HTML; the stub has no parser, so what is visible
+  // here is the fallback. It must be the whole text, never a folded digest.
+  const withoutHtml = await openDigest({
+    ...DIGEST,
+    html: "",
+    markdown: "первый пункт\nвторой пункт\nтретий пункт",
+    topics: [{ title: "Руль", bullets: ["первый пункт", "второй пункт", "третий пункт"] }],
+  });
+  const markdownText = textOf(withoutHtml.node);
+  assert.match(markdownText, /первый пункт/);
+  assert.match(markdownText, /третий пункт/, "the whole text, not a folded one");
+
+  // With neither HTML nor markdown the topics are rendered, and again every bullet.
+  const withoutAnything = await openDigest({ ...DIGEST, html: "", markdown: "" });
+  const topicsText = textOf(withoutAnything.node);
+  assert.match(topicsText, /калибровка помогла/);
+  assert.match(topicsText, /сход-развал тоже/);
 });
 
 test("a digest written before the style was recorded says so", async () => {
@@ -560,7 +534,7 @@ test("the style and layout lists open editors instead of only describing", async
   // умолчанию" with no way to choose another.
   assert.match(text, /Свой стиль/);
   assert.match(text, /Свой шаблон/);
-  assert.match(text, /Каждый прогон пишет все стили сразу/);
+  assert.match(text, /пишет дайджест одним стилем/);
   assert.match(text, /Шаблоны вёрстки/);
 
   const rows = all(body, (child) => child.classList?.contains("list__row"));
