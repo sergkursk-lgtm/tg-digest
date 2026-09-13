@@ -14,7 +14,7 @@
 import { ASK_WORKFLOW, DIGEST_WORKFLOW, pollUntil, runWorkflow } from "./backend.js";
 import { clear, el } from "./dom.js";
 import { sanitizeHtml } from "./sanitize.js";
-import { PATHS, briefTopics, digestFileName, formatTokens, formatMoment, formatUsd } from "./state.js";
+import { PATHS, briefTopics, digestFileName, formatMoment } from "./state.js";
 import {
   actionButton,
   button,
@@ -676,13 +676,8 @@ export function createDigestDetail(ctx, digestId) {
           },
         }),
       ]),
-      el("div", { class: "card" }, [
-        el("div", { class: "row row--between small muted" }, [
-          el("span", { text: `${digest.usage?.tokens_in ?? 0} токенов на вход` }),
-          el("span", { text: `${formatTokens(digest.usage?.tokens_out ?? 0)} на выход` }),
-          el("span", { text: formatUsd(digest.usage?.cost_usd) }),
-        ]),
-      ]),
+      // The cost and token counts are not shown here: the reader opened a digest to read
+      // it, and the money is accounted for in settings.
       el("div", { class: "card" }, [article]),
       renderAskBlock(),
       el("div", { class: "row" }, [

@@ -251,6 +251,12 @@ test("opening a digest renders the brief view and the ask box", async () => {
   assert.match(text, /калибровка помогла/);
   assert.match(text, /Спросить у ИИ/);
   assert.match(text, /Скачать \.md/);
+
+  // The digest is for reading. Token counts and cost are not shown here — the money is
+  // accounted for in settings.
+  for (const absent of ["токенов на вход", "на выход", "$"]) {
+    assert.ok(!text.includes(absent), `the digest should not mention "${absent}"`);
+  }
 });
 
 // -- channels ------------------------------------------------------------------
