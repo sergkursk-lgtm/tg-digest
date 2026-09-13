@@ -411,11 +411,23 @@ export function briefTopics(topics, perTopic = 2) {
   }));
 }
 
-/** Build the suggested file name for a downloaded digest. */
-export function digestFileName(digest) {
-  const safeChannel = String(digest?.channel_title ?? "digest")
-    .replace(/[^\p{L}\p{N}]+/gu, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60);
-  return `${digest?.id ?? "digest"}-${safeChannel || "digest"}.md`;
+/**
+ * Build the suggested file name for a downloaded digest.
+ *
+ * The style goes into the name when there is one: a digest holds several versions of the
+ * same period, and three files called the same thing in one downloads folder would be a
+ * puzzle.
+ */
+export function digestFileName(digest, style = "") {
+  const clean = (value) =>
+    String(value ?? "")
+      .replace(/[^\p{L}\p{N}]+/gu, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60);
+  const safeChannel = clean(digest?.channel_title);
+  const safeStyle = clean(style);
+  return [digest?.id ?? "digest", safeChannel || "digest", safeStyle || null]
+    .filter(Boolean)
+    .join("-")
+    .concat(".md");
 }

@@ -25,6 +25,7 @@ import {
   haptic,
   icon,
   listRow,
+  plural,
   progressBar,
   screen,
   skeletonRows,
@@ -84,6 +85,42 @@ export function progressOf(record) {
     return 100;
   }
   return furthest;
+}
+
+/**
+ * The styles a digest holds, primary first.
+ *
+ * A digest written in one style before variants existed has no list: its own fields are the
+ * single variant, which is what keeps old files readable instead of showing an empty screen.
+ *
+ * @param {object|null} digest
+ * @returns {Array<{preset_id: number|null, preset_name: string, topics: Array, markdown: string, html: string}>}
+ */
+export function variantsOf(digest) {
+  const variants = (digest?.variants ?? []).filter(
+    (variant) => variant && (variant.topics?.length || variant.markdown || variant.html),
+  );
+  if (variants.length) {
+    return variants;
+  }
+  if (digest && (digest.markdown || digest.html || digest.topics?.length)) {
+    return [
+      {
+        preset_id: digest.preset_id ?? null,
+        preset_name: digest.preset_name ?? "",
+        topics: digest.topics ?? [],
+        markdown: digest.markdown ?? "",
+        html: digest.html ?? "",
+      },
+    ];
+  }
+  return [];
+}
+
+/** How many styles a run will write, in words, for the sheet's summary line. */
+function styleCount(presets) {
+  const total = (presets ?? []).length || 1;
+  return `${total} ${plural(total, ["стиль", "стиля", "стилей"])}`;
 }
 
 /** Format the period a digest covers. */
@@ -372,6 +409,15 @@ export function createDigestsScreen(ctx) {
   return { title: "Дайджесты", node, floating: fab };
 }
 
+/** How a list row names the styles a digest holds. */
+export function styleLabel(item) {
+  const names = item?.preset_names ?? [];
+  if (names.length > 1) {
+    return `${names.length} ${plural(names.length, ["стиль", "стиля", "стилей"])}`;
+  }
+  return item?.preset_name || names[0] || "";
+}
+
 /**
  * One digest row: tap to read it, swipe it to the left to delete it.
  *
@@ -383,7 +429,7 @@ export function createDigestsScreen(ctx) {
 function swipeRow(ctx, item) {
   const content = listRow({
     title: item.channel_title ?? "канал",
-    sub: [periodLabel(item), item.preset_name || null].filter(Boolean).join(" · "),
+    sub: [periodLabel(item), styleLabel(item)].filter(Boolean).join(" · "),
     meta: `${item.messages_used ?? 0} сообщ.`,
     chevron: true,
     onClick: () => ctx.navigate("digest", { id: item.id }),
@@ -405,15 +451,17 @@ function swipeRow(ctx, item) {
 // -- new digest ---------------------------------------------------------------
 
 /**
- * The "new digest" sheet: pick channels, pick a style, pick a period, run.
+ * The "new digest" sheet: pick channels, pick a period, run.
+ *
+ * There is no style to pick: a run writes every configured style, and the digest screen
+ * switches between them. Asking which one to write was asking the reader to choose before
+ * they had read anything.
  *
  * @param {object} ctx
  */
 export function openNewDigestSheet(ctx) {
   const { snapshot } = ctx;
   const channels = snapshot.channels ?? [];
-  const presets = snapshot.presets ?? [];
-
   if (!channels.length) {
     toast("Сначала выберите хотя бы один канал", "error");
     ctx.navigate("channels");
@@ -422,7 +470,6 @@ export function openNewDigestSheet(ctx) {
 
   // Every channel starts selected: "collect everything I follow" is the common case.
   const selected = new Set(channels.map((channel) => channel.id));
-  let presetId = presets.find((preset) => preset.is_default)?.id ?? presets[0]?.id ?? null;
   let hours = Number(channels[0]?.default_period_hours ?? 24);
   let customHours = "";
 
@@ -464,49 +511,14 @@ export function openNewDigestSheet(ctx) {
   });
 
   const periodChips = el("div", { class: "chips" });
-  const styleChips = el("div", { class: "chips" });
   const summary = el("p", { class: "small muted" });
 
   function updateSummary() {
     const list = [...selected];
     summary.textContent = list.length
-      ? `${channelCount(list.length)} · ${hours} ч`
+      ? `${channelCount(list.length)} · ${hours} ч · ${styleCount(snapshot.presets)}`
       : "Ни один канал не выбран";
     runButton.disabled = list.length === 0;
-  }
-
-  // Chips are built once and only have their class toggled. Rebuilding them on every tap
-  // would throw away the button under the finger and cut its press animation short.
-  const styleChipNodes = [];
-
-  function buildStyleChips() {
-    if (!presets.length) {
-      styleChips.append(el("p", { class: "small muted", text: "Стили не заданы — будет краткий." }));
-      return;
-    }
-    for (const preset of presets) {
-      const node = el("button", {
-        class: "chip",
-        type: "button",
-        text: preset.name,
-        on: {
-          click: () => {
-            haptic("select");
-            presetId = preset.id;
-            paintStyleChips();
-          },
-        },
-      });
-      styleChipNodes.push({ node, id: preset.id });
-      styleChips.append(node);
-    }
-    paintStyleChips();
-  }
-
-  function paintStyleChips() {
-    for (const entry of styleChipNodes) {
-      entry.node.classList.toggle("chip--on", entry.id === presetId);
-    }
   }
 
   const customInput = el("input", {
@@ -563,11 +575,7 @@ export function openNewDigestSheet(ctx) {
     busyLabel: "Запускаю…",
     action: async () => {
       sheet.close();
-      await runDigest(ctx, {
-        channelIds: [...selected],
-        periodHours: hours,
-        presetId,
-      });
+      await runDigest(ctx, { channelIds: [...selected], periodHours: hours });
     },
   });
 
@@ -576,9 +584,7 @@ export function openNewDigestSheet(ctx) {
     body: [
       el("h3", { class: "small muted", text: "1. Каналы" }),
       el("div", { class: "card card--flush" }, channelRows),
-      el("h3", { class: "small muted", text: "2. Стиль" }),
-      styleChips,
-      el("h3", { class: "small muted", text: "3. Период" }),
+      el("h3", { class: "small muted", text: "2. Период" }),
       periodChips,
       customInput,
       summary,
@@ -586,7 +592,6 @@ export function openNewDigestSheet(ctx) {
     ],
   });
 
-  buildStyleChips();
   buildPeriodChips();
   updateSummary();
   sheet.open();
@@ -597,9 +602,9 @@ export function openNewDigestSheet(ctx) {
  * Start a digest run and follow it, showing the real stages the workflow reports.
  *
  * @param {object} ctx
- * @param {{channelIds: number[], periodHours: number, presetId: number|null}} options
+ * @param {{channelIds: number[], periodHours: number}} options
  */
-export async function runDigest(ctx, { channelIds, periodHours, presetId }) {
+export async function runDigest(ctx, { channelIds, periodHours }) {
   const bar = progressBar({ label: "Обычно это занимает около минуты." });
   const retrySlot = el("div", { class: "stack" });
   const progressSheet = createSheet({
@@ -610,14 +615,12 @@ export async function runDigest(ctx, { channelIds, periodHours, presetId }) {
   progressSheet.open();
 
   try {
+    // No preset_id: the workflow writes every configured style into one digest.
     const inputs = {
       channel_ids: channelIds.join(","),
       period_hours: String(periodHours ?? ""),
       dry_run: "false",
     };
-    if (presetId !== null && presetId !== undefined) {
-      inputs.preset_id = String(presetId);
-    }
 
     const { runId, record, started } = await runWorkflow({
       client: ctx.client,
@@ -653,7 +656,7 @@ export async function runDigest(ctx, { channelIds, periodHours, presetId }) {
         block: true,
         onClick: () => {
           progressSheet.close();
-          runDigest(ctx, { channelIds, periodHours, presetId });
+          runDigest(ctx, { channelIds, periodHours });
         },
       }),
     );
@@ -676,6 +679,7 @@ export async function runDigest(ctx, { channelIds, periodHours, presetId }) {
 export function createDigestDetail(ctx, digestId) {
   const node = screen([skeletonRows(3)]);
   let digest = null;
+  let choice = 0;
   let mode = "brief";
   const thread = loadThread(digestId);
 
@@ -686,14 +690,16 @@ export function createDigestDetail(ctx, digestId) {
       return;
     }
 
-    const topics = digest.topics ?? [];
+    const variants = variantsOf(digest);
+    const current = variants[choice] ?? variants[0] ?? { topics: [], markdown: "", html: "" };
+    const topics = current.topics ?? [];
     const shown = mode === "brief" ? briefTopics(topics, 2) : topics;
 
     const article = el("div", { class: "digest" });
     if (mode === "full") {
       // Foreign HTML: the digest was built from Telegram messages, so it goes through the
       // whitelist sanitiser before it reaches the DOM.
-      article.append(sanitizeHtml(digest.html ?? ""));
+      article.append(sanitizeHtml(current.html ?? ""));
     } else if (shown.length) {
       for (const topic of shown) {
         article.append(el("h3", { text: topic.title }));
@@ -706,23 +712,41 @@ export function createDigestDetail(ctx, digestId) {
         );
       }
     } else {
-      article.append(el("p", { class: "muted", text: digest.markdown ?? "Пусто." }));
+      article.append(el("p", { class: "muted", text: current.markdown ?? "Пусто." }));
     }
 
     node.append(
       el("div", {}, [
         el("h1", { text: digest.channel_title ?? "дайджест" }),
-        el("div", { class: "row" }, [
-          // The style is how the model was asked to write; the chips below are only how
-          // much of the result is on screen. They used to share the words "краткий" and
-          // "полный", which is exactly how a reader ends up looking for an analytical
-          // digest and finding buttons that seem to deny it exists.
-          digest.preset_name
-            ? el("span", { class: "badge badge--quiet", text: digest.preset_name })
-            : el("span", { class: "badge badge--quiet", text: "стиль не записан" }),
-          el("span", { class: "small muted", text: periodLabel(digest) }),
-        ]),
+        el("p", { class: "small muted", text: periodLabel(digest) }),
       ]),
+      // The styles this one digest holds. Switching is just choosing a different version of
+      // the same period, so the questions below stay where they are.
+      variants.length > 1
+        ? el(
+            "div",
+            { class: "chips" },
+            variants.map((variant, index) =>
+              el("button", {
+                class: `chip${index === choice ? " chip--on" : ""}`,
+                type: "button",
+                text: variant.preset_name || `Стиль ${index + 1}`,
+                on: {
+                  click: () => {
+                    haptic("select");
+                    choice = index;
+                    render();
+                  },
+                },
+              }),
+            ),
+          )
+        : el("div", { class: "row" }, [
+            el("span", {
+              class: "badge badge--quiet",
+              text: current.preset_name || "стиль не записан",
+            }),
+          ]),
       el("div", { class: "chips" }, [
         el("button", {
           class: `chip${mode === "brief" ? " chip--on" : ""}`,
@@ -753,8 +777,8 @@ export function createDigestDetail(ctx, digestId) {
         class: "small muted",
         text:
           mode === "brief"
-            ? "По два тезиса на тему. Стиль задаётся при сборке дайджеста."
-            : "Дайджест целиком, как его собрала модель.",
+            ? `По два тезиса на тему. Стиль: ${current.preset_name || "не записан"}.`
+            : `Дайджест целиком, как его собрала модель. Стиль: ${current.preset_name || "не записан"}.`,
       }),
       // The cost and token counts are not shown here: the reader opened a digest to read
       // it, and the money is accounted for in settings.
@@ -764,7 +788,10 @@ export function createDigestDetail(ctx, digestId) {
         button({
           label: "Скачать .md",
           icon: "download",
-          onClick: () => downloadText(digestFileName(digest), digest.markdown ?? ""),
+          // The style that is on screen, not the primary one: downloading what you are
+          // looking at is the only thing that cannot surprise.
+          onClick: () =>
+            downloadText(digestFileName(digest, current.preset_name), current.markdown ?? ""),
         }),
         // The same delete the list offers by swiping, as a button: a keyboard or a mouse
         // has no swipe.

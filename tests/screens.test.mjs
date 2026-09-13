@@ -390,6 +390,42 @@ async function openDigest(digest) {
   return screen;
 }
 
+/** One digest holding the same period written three ways. */
+const THREE_STYLE_DIGEST = {
+  id: "20260913T123109Z-c1",
+  channel_title: "SOUEAST S07 клуб",
+  period_start: NOW,
+  period_end: NOW,
+  preset_id: 1,
+  preset_name: "Краткий",
+  topics: [{ title: "Руль", bullets: ["тезис кратко"] }],
+  markdown: "# Руль\n- тезис кратко",
+  html: "<h2>Руль</h2><ul><li>тезис кратко</li></ul>",
+  variants: [
+    {
+      preset_id: 1,
+      preset_name: "Краткий",
+      topics: [{ title: "Руль", bullets: ["тезис кратко"] }],
+      markdown: "# Руль",
+      html: "<h2>Руль</h2>",
+    },
+    {
+      preset_id: 2,
+      preset_name: "Детальный",
+      topics: [{ title: "Руль", bullets: ["подробность"] }],
+      markdown: "# Руль",
+      html: "<h2>Руль</h2>",
+    },
+    {
+      preset_id: 3,
+      preset_name: "Аналитический",
+      topics: [{ title: "Руль", bullets: ["причина и следствие"] }],
+      markdown: "# Руль",
+      html: "<h2>Руль</h2>",
+    },
+  ],
+};
+
 const DIGEST = {
   id: "20260913T084041Z-c1",
   channel_title: "SOUEAST S07 клуб",
@@ -403,19 +439,49 @@ const DIGEST = {
   usage: { tokens_in: 100, tokens_out: 20, cost_usd: 0.001 },
 };
 
-test("a digest says which style it was written in", async () => {
+test("a digest with three styles opens a switcher, not a mystery", async () => {
   // The reader asked "where is the analytical one?" while looking at an analytical digest:
   // nothing on the screen said so, and the reading toggle was called "Краткий".
-  const screen = await openDigest(DIGEST);
+  const screen = await openDigest(THREE_STYLE_DIGEST);
   const text = textOf(screen.node);
 
-  assert.match(text, /Аналитический/);
-  // The toggle folds the same text; it is not a style, so it is not named like one.
+  // One button per style, the first one on.
+  const chips = all(screen.node, (child) => child.classList?.contains("chip"));
+  assert.deepEqual(
+    chips.map((chip) => textOf(chip)),
+    ["Краткий", "Детальный", "Аналитический", "Тезисы", "Весь текст"],
+  );
+  assert.equal(chips[0].classList.contains("chip--on"), true, "the primary style is open");
+  assert.equal(chips[2].classList.contains("chip--on"), false);
+
+  // The caption names the style that is on screen, so the text is never anonymous.
+  assert.match(text, /Стиль: Краткий/);
+});
+
+test("switching the style shows that style's text", async () => {
+  const screen = await openDigest(THREE_STYLE_DIGEST);
+  const chips = () => all(screen.node, (child) => child.classList?.contains("chip"));
+
+  assert.match(textOf(screen.node), /тезис кратко/);
+
+  chips().find((chip) => textOf(chip) === "Аналитический").fire("click");
+
+  const text = textOf(screen.node);
+  assert.match(text, /причина и следствие/, "the analytical wording is on screen");
+  assert.ok(!text.includes("тезис кратко"), "and the brief one is not");
+  assert.equal(chips().find((chip) => textOf(chip) === "Аналитический").classList.contains("chip--on"), true);
+  assert.match(text, /Стиль: Аналитический/);
+});
+
+test("a one-style digest needs no switcher", async () => {
+  // A digest built by an older version, or by a manual run with one style.
+  const screen = await openDigest(DIGEST);
   const chips = all(screen.node, (child) => child.classList?.contains("chip")).map((chip) =>
     textOf(chip),
   );
+  // Only the reading toggle: there is nothing to switch between.
   assert.deepEqual(chips, ["Тезисы", "Весь текст"]);
-  assert.match(text, /Стиль задаётся при сборке/);
+  assert.match(textOf(screen.node), /Аналитический/);
 });
 
 test("the reading toggle switches how much is shown, not which digest it is", async () => {
@@ -448,4 +514,13 @@ test("the list names the style of each digest", async () => {
   const screen = createDigestsScreen(context());
   const sub = all(screen.node, (child) => child.classList?.contains("list__sub"))[0];
   assert.match(textOf(sub), /Аналитический/);
+});
+
+
+test("the download carries the style it is showing", async () => {
+  const { digestFileName } = await load("state.js");
+  // A digest holds several versions of the same period; three files with one name in a
+  // downloads folder would be a puzzle.
+  assert.equal(digestFileName({ id: "d1", channel_title: "Клуб" }, "Аналитический"), "d1-Клуб-Аналитический.md");
+  assert.equal(digestFileName({ id: "d1", channel_title: "Клуб" }), "d1-Клуб.md");
 });
