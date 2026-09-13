@@ -25,8 +25,11 @@ frontend/
   assets/theme.css    — токены тем и вёрстка
   assets/app.js       — точка входа: PIN-гейт, роутинг, дашборд, подвал
   assets/wizard.js    — мастер первого запуска
+  assets/screens.js   — экраны дайджеста, шаблонов, настроек, статистики
+  assets/telegram.js  — отправка в бота из браузера (зеркало backend/notifier.py)
   assets/state.js     — чтение ветки data и правила «что настроено» (чистые функции)
   assets/api.js       — клиент GitHub API (Contents, Actions, Secrets)
+  assets/bytes.js     — base64 и UTF-8 для браузера и Node
   assets/crypto.js    — PIN → PBKDF2 → AES-GCM для хранения токена
   assets/seal.js      — libsodium sealed box поверх tweetnacl
   assets/blake2b.js   — BLAKE2b с настраиваемой длиной (нужен для nonce)
@@ -58,6 +61,7 @@ tools/                — ручные проверки на живом репо
 ## Чего не делать
 
 - Не добавлять React, Vue, Tailwind, сборщики и `node_modules` в рантайм страницы.
-- Не дублировать бизнес-логику бэкенда, кроме правил тарифа: они зеркалируются
-  в `frontend/assets/tariff.js` и проверяются `tests/tariff.test.mjs`.
+- Не дублировать бизнес-логику бэкенда. Два осознанных зеркала: `assets/tariff.js`
+  (правила peak/off-peak) и `assets/telegram.js` (разбиение длинных сообщений), оба
+  проверяются теми же инвариантами, что и Python-оригиналы.
 - Не хранить в этом репозитории данные, секреты и содержимое дайджестов.
