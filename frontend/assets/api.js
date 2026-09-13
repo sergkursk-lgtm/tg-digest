@@ -1,13 +1,22 @@
 /**
  * Minimal GitHub API client for the browser.
  *
- * The app has no server, so the browser talks to GitHub directly: `api.github.com`
- * sends `Access-Control-Allow-Origin: *`, which makes this possible from a static page.
- * The client is deliberately narrow — only the calls this project actually makes — so
- * the whole surface can be covered by tests.
+ * The app has no server, so the browser talks to GitHub directly: `api.github.com` sends
+ * `Access-Control-Allow-Origin: *`, which makes this possible from a static page. The
+ * client is deliberately narrow — only the calls this project actually makes — so the
+ * whole surface can be covered by tests.
  *
- * Errors are translated into Russian sentences a user can act on, because "HTTP 403"
- * on its own tells nobody which token permission is missing.
+ * Two behaviours exist because of bugs found by using the real thing:
+ *
+ *   * **nothing is cached.** GitHub answers Contents reads with
+ *     `Cache-Control: private, max-age=60`, and the wizard's three-second poll was being
+ *     served the same stale body for a whole minute.
+ *   * **a lost write race is retried.** The workflow writes the same files the UI writes,
+ *     so a sha read seconds ago can already be stale; without a retry the user sees
+ *     "конфликт версий" for something they cannot control.
+ *
+ * Errors are translated into Russian sentences a user can act on, because "HTTP 403" on
+ * its own tells nobody which token permission is missing.
  */
 
 import { fromBase64, toBase64, utf8Decode, utf8Encode } from "./bytes.js";
@@ -19,6 +28,7 @@ export const API_ROOT = "https://api.github.com";
 export const DATA_BRANCH = "data";
 
 const API_VERSION = "2022-11-28";
+const WRITE_ATTEMPTS = 3;
 
 /** Raised for any non-success response, with the status kept for branching. */
 export class GitHubError extends Error {
@@ -79,13 +89,20 @@ export function createGitHub({
     "X-GitHub-Api-Version": API_VERSION,
   };
 
+  const contentsUrl = (path) => `${repoBase}/contents/${path}`;
+
+  /**
+   * Add a throwaway parameter so a poll never reads a cached body.
+   *
+   * `cache: "no-store"` should be enough, but GitHub serves Contents reads with
+   * `max-age=60`, and a unique URL is the only thing every cache layer respects.
+   */
+  const fresh = (url) => `${url}${url.includes("?") ? "&" : "?"}_=${Date.now()}`;
+
   /** Send a request and convert failures into readable errors. */
   async function request(url, init = {}, { context = url, allow404 = false } = {}) {
     let response;
     try {
-      // GitHub answers Contents reads with `Cache-Control: private, max-age=60`. Without
-      // no-store the browser would serve a stale body to the wizard's poll for a whole
-      // minute, which is exactly what happened when a login step was being watched.
       response = await fetchImpl(url, { headers, cache: "no-store", ...init });
     } catch (error) {
       throw new GitHubError(`нет связи с GitHub: ${error.message}`, 0, null);
@@ -117,15 +134,24 @@ export function createGitHub({
     }
   }
 
-  const contentsUrl = (path) => `${repoBase}/contents/${path}`;
+  /** Decode a Contents API file payload. */
+  function decodeFile(body) {
+    const raw = fromBase64(String(body.content ?? "").replace(/\s+/g, ""));
+    return { data: JSON.parse(utf8Decode(raw)), sha: body.sha };
+  }
 
-  /**
-   * Add a throwaway parameter so a poll never reads a cached body.
-   *
-   * `cache: "no-store"` should be enough, but GitHub serves Contents reads with
-   * `max-age=60` and a unique URL is the only thing every cache layer respects.
-   */
-  const fresh = (url) => `${url}${url.includes("?") ? "&" : "?"}_=${Date.now()}`;
+  /** Read a JSON file from an explicit branch, or null when it does not exist. */
+  const readJsonOnBranch = async (path, branch) => {
+    const body = await request(
+      fresh(`${contentsUrl(path)}?ref=${branch}`),
+      {},
+      { context: `чтение ${path}`, allow404: true },
+    );
+    return body === null ? null : decodeFile(body);
+  };
+
+  /** Read a JSON file from the data branch, or null when it does not exist. */
+  const readJson = (path) => readJsonOnBranch(path, DATA_BRANCH);
 
   return {
     owner,
@@ -172,13 +198,15 @@ export function createGitHub({
         {},
         { context: "публичный ключ репозитория" },
       );
-      const encrypted = sealBox(nacl, value, key.key);
       await request(
         `${repoBase}/actions/secrets/${name}`,
         {
           method: "PUT",
           headers: { ...headers, "Content-Type": "application/json" },
-          body: JSON.stringify({ encrypted_value: encrypted, key_id: key.key_id }),
+          body: JSON.stringify({
+            encrypted_value: sealBox(nacl, value, key.key),
+            key_id: key.key_id,
+          }),
         },
         { context: `запись секрета ${name}` },
       );
@@ -195,46 +223,59 @@ export function createGitHub({
       return true;
     },
 
-    /**
-     * Read a JSON file from the data branch.
-     * @returns {Promise<{data: object, sha: string}|null>} null when it does not exist
-     */
-    async readJson(path) {
-      const body = await request(
-        fresh(`${contentsUrl(path)}?ref=${DATA_BRANCH}`),
-        {},
-        { context: `чтение ${path}`, allow404: true },
-      );
-      if (body === null) {
-        return null;
-      }
-      const raw = fromBase64(String(body.content ?? "").replace(/\s+/g, ""));
-      return { data: JSON.parse(utf8Decode(raw)), sha: body.sha };
-    },
+    readJson,
+    readJsonOnBranch,
 
     /**
      * Create or replace a JSON file in the data branch.
+     *
+     * When the write loses a race (409/422), the current sha is read again and the write
+     * is retried. The runner writes the same files this does, so it is not a rare case: a
+     * login step is written by the browser and updated by the workflow seconds later.
+     *
      * @returns {Promise<string>} the new commit sha
      */
     async writeJson(path, payload, message, sha = null) {
-      const body = {
-        message,
-        content: toBase64(utf8Encode(JSON.stringify(payload, null, 2) + "\n")),
-        branch: DATA_BRANCH,
-      };
-      if (sha) {
-        body.sha = sha;
+      let currentSha = sha;
+      let lastError = null;
+
+      for (let attempt = 0; attempt < WRITE_ATTEMPTS; attempt += 1) {
+        const body = {
+          message,
+          content: toBase64(utf8Encode(JSON.stringify(payload, null, 2) + "\n")),
+          branch: DATA_BRANCH,
+        };
+        if (currentSha) {
+          body.sha = currentSha;
+        }
+
+        try {
+          const response = await request(
+            contentsUrl(path),
+            {
+              method: "PUT",
+              headers: { ...headers, "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            },
+            { context: `запись ${path}` },
+          );
+          return response.content?.sha ?? "";
+        } catch (error) {
+          lastError = error;
+          if ((error.status === 409 || error.status === 422) && attempt < WRITE_ATTEMPTS - 1) {
+            const current = await readJson(path);
+            currentSha = current?.sha ?? null;
+            continue;
+          }
+          throw error;
+        }
       }
-      const response = await request(
-        contentsUrl(path),
-        {
-          method: "PUT",
-          headers: { ...headers, "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        },
-        { context: `запись ${path}` },
+
+      throw new GitHubError(
+        `не удалось записать ${path} после ${WRITE_ATTEMPTS} попыток: ${lastError?.message ?? ""}`,
+        409,
+        null,
       );
-      return response.content?.sha ?? "";
     },
 
     /** Delete a file from the data branch, ignoring a missing one. */
@@ -284,20 +325,6 @@ export function createGitHub({
         url: run.html_url,
         event: run.event,
       };
-    },
-
-    /** Read a file from any branch, used for the workflow-run status file. */
-    async readJsonOnBranch(path, branch) {
-      const body = await request(
-        fresh(`${contentsUrl(path)}?ref=${branch}`),
-        {},
-        { context: `чтение ${path}`, allow404: true },
-      );
-      if (body === null) {
-        return null;
-      }
-      const raw = fromBase64(String(body.content ?? "").replace(/\s+/g, ""));
-      return { data: JSON.parse(utf8Decode(raw)), sha: body.sha };
     },
   };
 }

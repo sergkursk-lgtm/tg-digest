@@ -143,8 +143,10 @@ export function createWizard({ mount, context, nacl, refresh, onComplete, client
 
   /** Persist the login state file, keeping the fields the backend needs. */
   async function saveLoginState(patch) {
-    const current = snapshot.login ?? {};
-    const sha = snapshot.loginSha;
+    // Read the file again rather than trusting the page snapshot: the workflow writes it
+    // too, so a sha captured at render time is often already stale.
+    const stored = await context.client.readJson(PATHS.loginState);
+    const current = stored?.data ?? {};
     const payload = {
       schema: 1,
       updated_at: new Date().toISOString(),
@@ -160,7 +162,12 @@ export function createWizard({ mount, context, nacl, refresh, onComplete, client
       ...current,
       ...patch,
     };
-    await context.client.writeJson(PATHS.loginState, payload, "chore(login): update state", sha);
+    await context.client.writeJson(
+      PATHS.loginState,
+      payload,
+      "chore(login): update state",
+      stored?.sha ?? null,
+    );
   }
 
   /** Write the one-shot request the login workflow consumes. */

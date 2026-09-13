@@ -31,6 +31,7 @@ function createFakeGitHub(options = {}) {
     dispatches: [],
     calls: [],
     shaCounter: 0,
+    conflictNextWrites: 0,
     secretPlaintext: new Map(),
     keyPair,
     permissionDenied: options.permissionDenied ?? null,
@@ -112,6 +113,10 @@ function createFakeGitHub(options = {}) {
         return json({ sha: file.sha, content: toBase64(new TextEncoder().encode(file.content)) });
       }
       if (method === "PUT") {
+        if (state.conflictNextWrites > 0) {
+          state.conflictNextWrites -= 1;
+          return json({ message: "sha mismatch" }, 409);
+        }
         if (body.branch !== "data") {
           return json({ message: "wrong branch" }, 422);
         }
@@ -294,17 +299,34 @@ test("an update sends the sha it read", async () => {
   assert.equal((await client.readJson("data/x.json")).data.a, 2);
 });
 
-test("a stale sha is reported as a conflict", async () => {
+test("a stale sha is recovered from, not reported", async () => {
+  // The runner writes the same files, so a sha read a moment ago can be stale; the user
+  // must not see "конфликт версий" for something they cannot control.
   const fake = createFakeGitHub();
   const client = clientFor(fake);
   await client.writeJson("data/x.json", { a: 1 }, "first");
+  await client.writeJson("data/x.json", { a: 2 }, "second", "0".repeat(40));
+  assert.equal((await client.readJson("data/x.json")).data.a, 2);
+});
+
+test("a lost write race is retried with the fresh sha", async () => {
+  const fake = createFakeGitHub();
+  const client = clientFor(fake);
+  await client.writeJson("data/x.json", { a: 1 }, "first");
+  fake.state.conflictNextWrites = 1;
+
+  await client.writeJson("data/x.json", { a: 2 }, "second", "0".repeat(40));
+  const puts = fake.state.calls.filter((call) => call.method === "PUT");
+  assert.equal(puts.length, 3); // create, rejected, retried
+  assert.equal((await client.readJson("data/x.json")).data.a, 2);
+});
+
+test("persistent conflicts are reported clearly", async () => {
+  const fake = createFakeGitHub();
+  fake.state.conflictNextWrites = 9;
   await assert.rejects(
-    () => client.writeJson("data/x.json", { a: 2 }, "second", "0".repeat(40)),
-    (error) => {
-      assert.equal(error.status, 409);
-      assert.match(error.message, /конфликт версий/);
-      return true;
-    },
+    () => clientFor(fake).writeJson("data/x.json", { a: 1 }, "msg", "0".repeat(40)),
+    /конфликт версий|не удалось записать/,
   );
 });
 
