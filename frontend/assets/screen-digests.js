@@ -26,9 +26,9 @@ import {
   haptic,
   icon,
   listRow,
+  progressBar,
   screen,
   skeletonRows,
-  stepList,
   swipeToReveal,
   toast,
 } from "./ui.js";
@@ -42,30 +42,49 @@ const PERIOD_CHOICES = [
   { hours: 168, label: "Неделя" },
 ];
 
-/** Russian labels for the stages the workflow reports. */
-const STAGE_LABELS = {
-  load_settings: "Читаю настройки",
-  select_channels: "Выбираю каналы",
-  budget_check: "Проверяю бюджет",
-  read: "Читаю Telegram",
-  summarize: "Сжимаю через DeepSeek",
-  store: "Сохраняю дайджест",
-  channels: "Завершаю",
+/**
+ * Where each stage of a run sits on the progress bar.
+ *
+ * The numbers are the share of the work, not the share of the wall clock: reading the
+ * channel and asking the model are the two long parts, and the rest is bookkeeping around
+ * them. They are only ever a floor — the bar creeps a few points past the last stage it has
+ * heard about, so it moves without claiming progress that has not happened.
+ */
+const STAGE_PROGRESS = {
+  load_settings: 6,
+  select_channels: 10,
+  budget_check: 14,
+  read: 45,
+  summarize: 82,
+  store: 96,
+  channels: 100,
 };
 
 /**
- * Turn a workflow step into the shape the step list renders.
+ * The furthest milestone a run record proves, in percent.
  *
  * Step names arrive as `read:c1` — the stage plus the channel it belongs to — so several
- * channels in one run can be told apart.
+ * channels in one run simply take the highest value rather than stacking up.
+ *
+ * @param {object|null} record contents of data/runs/<id>.json
+ * @returns {number} 0-100
  */
-export function describeStep(step) {
-  const [stage, channel] = String(step?.name ?? "").split(":");
-  return {
-    label: STAGE_LABELS[stage] ?? stage ?? "Шаг",
-    detail: step?.detail ?? (channel ? `канал ${channel.replace(/^c/, "")}` : undefined),
-    status: step?.status === "running" ? "running" : step?.status === "failed" ? "failed" : step?.status === "skipped" ? "pending" : "ok",
-  };
+export function progressOf(record) {
+  let furthest = 0;
+  for (const step of record?.steps ?? []) {
+    if (!step || step.status === "pending") {
+      continue;
+    }
+    const stage = String(step.name ?? "").split(":")[0];
+    const weight = STAGE_PROGRESS[stage];
+    if (weight && weight > furthest) {
+      furthest = weight;
+    }
+  }
+  if (record?.status && record.status !== "running") {
+    return 100;
+  }
+  return furthest;
 }
 
 /** Format the period a digest covers. */
@@ -515,29 +534,14 @@ export function openNewDigestSheet(ctx) {
  * @param {{channelIds: number[], periodHours: number, presetId: number|null}} options
  */
 export async function runDigest(ctx, { channelIds, periodHours, presetId }) {
-  const progressBody = el("div", { class: "stack" }, [
-    el("p", { class: "muted", text: "Задание отправлено в GitHub Actions. Это занимает около минуты." }),
-    el("div", { class: "skeleton skeleton--row" }),
-  ]);
+  const bar = progressBar({ label: "Обычно это занимает около минуты." });
+  const retrySlot = el("div", { class: "stack" });
   const progressSheet = createSheet({
     title: "Собираю дайджест",
-    body: [progressBody],
+    body: [bar.node, retrySlot],
     dismissLabel: "Свернуть",
   });
   progressSheet.open();
-
-  const renderSteps = (record) => {
-    const steps = (record?.steps ?? []).map(describeStep);
-    clear(progressBody);
-    if (!steps.length) {
-      progressBody.append(el("p", { class: "muted", text: "Жду первый отчёт от задачи…" }));
-      return;
-    }
-    progressBody.append(stepList(steps));
-    if (record?.error) {
-      progressBody.append(el("p", { class: "status status--error", text: record.error }));
-    }
-  };
 
   try {
     const inputs = {
@@ -553,44 +557,30 @@ export async function runDigest(ctx, { channelIds, periodHours, presetId }) {
       client: ctx.client,
       workflow: DIGEST_WORKFLOW,
       inputs,
-      onProgress: renderSteps,
+      onProgress: (record) => bar.set(progressOf(record)),
     });
 
     if (!started) {
-      renderSteps(null);
-      progressBody.append(
-        el("p", {
-          class: "status status--warn",
-          text: "Запуск не появился в Actions за две минуты. Проверьте вкладку Actions в репозитории.",
-        }),
-      );
+      bar.fail("Запуск не появился за две минуты. Загляните во вкладку Actions.");
       return;
     }
 
     if (!record) {
-      progressBody.append(
-        el("p", {
-          class: "status status--warn",
-          text: "Прогон идёт дольше 15 минут. Он не потеряется: результат появится в списке позже.",
-        }),
-      );
+      bar.fail("Прогон идёт дольше 15 минут. Он не потеряется: дайджест появится в списке позже.");
       return;
     }
 
-    renderSteps(record);
     if (record.status === "ok") {
+      bar.finish();
       toast("Дайджест готов", "ok");
       progressSheet.close();
       await ctx.refresh({ silent: true });
       return;
     }
-    progressBody.append(
-      el("p", {
-        class: "status status--error",
-        text: `Не получилось: ${record.error ?? "без подробностей"}`,
-      }),
-    );
-    progressBody.append(
+
+    bar.fail(`Не получилось: ${record.error ?? "без подробностей"}`);
+    clear(retrySlot);
+    retrySlot.append(
       button({
         label: "Повторить",
         variant: "primary",
@@ -602,10 +592,10 @@ export async function runDigest(ctx, { channelIds, periodHours, presetId }) {
       }),
     );
     if (runId) {
-      progressBody.append(el("p", { class: "small muted", text: `Запуск №${runId}` }));
+      retrySlot.append(el("p", { class: "small muted", text: `Запуск №${runId}` }));
     }
   } catch (error) {
-    progressBody.append(el("p", { class: "status status--error", text: error.message }));
+    bar.fail(error.message);
   }
 }
 

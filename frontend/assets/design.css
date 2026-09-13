@@ -228,6 +228,7 @@ a {
   .switch::after,
   .meter__fill,
   .swipe__content,
+  .progress__fill,
   .lock--shake .lock__dots {
     animation: none !important;
     transition: none !important;
@@ -1046,6 +1047,40 @@ a {
   margin-bottom: var(--s4);
   font-size: 20px;
   font-weight: 700;
+}
+
+/* -- progress --------------------------------------------------------------- */
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.progress__track {
+  height: 10px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+/* The bar is scaled, not resized: `width` would lay out on every frame. */
+.progress__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+.progress__fill--failed {
+  background: var(--danger);
+}
+
+.progress__value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 /* -- feedback --------------------------------------------------------------- */

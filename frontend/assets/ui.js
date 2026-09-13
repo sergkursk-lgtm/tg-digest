@@ -604,6 +604,117 @@ export function stepList(steps) {
   );
 }
 
+/**
+ * A determinate progress bar.
+ *
+ * The percentage is never invented: `set` is given the furthest milestone the backend has
+ * actually reported, and between milestones the bar creeps towards it by a few points so it
+ * reads as alive. It never claims more than a little beyond the last thing that really
+ * happened, and it only reaches 100% when the run says it is done.
+ *
+ * @param {object} [options]
+ * @param {string} [options.label] caption under the bar
+ * @returns {{node: HTMLElement, set: Function, finish: Function, fail: Function, value: Function, destroy: Function}}
+ */
+export function progressBar({ label = "" } = {}) {
+  const fill = el("div", { class: "progress__fill" });
+  const track = el(
+    "div",
+    {
+      class: "progress__track",
+      role: "progressbar",
+      "aria-valuemin": "0",
+      "aria-valuemax": "100",
+      "aria-valuenow": "0",
+    },
+    [fill],
+  );
+  const value = el("span", { class: "progress__value", text: "0 %" });
+  const caption = el("p", { class: "small muted", text: label });
+  const node = el("div", { class: "progress" }, [
+    track,
+    el("div", { class: "row row--between" }, [value, caption]),
+  ]);
+
+  let floor = 0;
+  let shown = 0;
+  let timer = null;
+
+  /** How far past the last milestone the bar may drift while it waits for the next one. */
+  const CREEP = 4;
+
+  const paint = () => {
+    fill.style.transform = `scaleX(${(shown / 100).toFixed(4)})`;
+    value.textContent = `${Math.round(shown)} %`;
+    track.setAttribute("aria-valuenow", String(Math.round(shown)));
+  };
+
+  const stop = () => {
+    if (timer) {
+      clearInterval(timer);
+      timer = null;
+    }
+  };
+
+  const tick = () => {
+    if (shown < floor) {
+      // Catch up with what was reported: at least a point per tick, so a jump of forty
+      // points does not spend seconds looking stuck.
+      shown = Math.min(floor, shown + Math.max(1, (floor - shown) * 0.25));
+    } else {
+      const ceiling = Math.min(floor + CREEP, 99);
+      if (shown < ceiling) {
+        shown = Math.min(ceiling, shown + Math.max(0.2, (ceiling - shown) * 0.06));
+      }
+    }
+    paint();
+  };
+
+  paint();
+
+  return {
+    node,
+    /** Report the furthest milestone reached, in percent. Never moves backwards. */
+    set(percent) {
+      const next = Math.max(0, Math.min(100, Number(percent) || 0));
+      if (next > floor) {
+        floor = next;
+      }
+      if (!timer) {
+        timer = setInterval(tick, 400);
+        // In Node the returned handle can hold the process open; in a browser this is a
+        // number and the call does nothing. A failing test must not hang the suite.
+        timer?.unref?.();
+      }
+      tick();
+    },
+    /** The run finished: fill the bar and say so. */
+    finish(text = "Готово") {
+      stop();
+      floor = 100;
+      shown = 100;
+      paint();
+      caption.textContent = text;
+    },
+    /** The run failed: stop where it really got to, and explain. */
+    fail(message) {
+      stop();
+      // Snap to the last confirmed milestone rather than to whatever the creep had
+      // reached: the bar then shows how far the run actually got.
+      shown = Math.max(floor, shown > floor + CREEP ? floor : shown);
+      paint();
+      fill.classList.add("progress__fill--failed");
+      caption.textContent = message;
+    },
+    /** Stop the timer; called when the sheet is dismissed. */
+    destroy: stop,
+    /** What is on screen right now, which trails the target while it eases. */
+    value: () => shown,
+    /** The furthest milestone reported so far. */
+    target: () => floor,
+  };
+}
+
 // -- overlays -----------------------------------------------------------------
 
 let toastHost = null;

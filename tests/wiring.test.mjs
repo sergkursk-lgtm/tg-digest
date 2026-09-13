@@ -15,7 +15,6 @@ import {
   mergeBudgetSettings,
   mergeTelegramSettings,
 } from "../frontend/assets/backend.js";
-import { describeStep } from "../frontend/assets/screen-digests.js";
 import { periodLabelFor } from "../frontend/assets/screen-channels.js";
 import { channelCount, plural } from "../frontend/assets/ui.js";
 
@@ -142,24 +141,6 @@ test("buildChannel continues the numbering and marks forums", () => {
 });
 
 // -- presentation helpers -----------------------------------------------------
-
-test("run steps are labelled in Russian and keep their channel", () => {
-  assert.deepEqual(describeStep({ name: "read:c1", status: "ok", detail: "40 сообщений" }), {
-    label: "Читаю Telegram",
-    detail: "40 сообщений",
-    status: "ok",
-  });
-  // Without a detail the channel number is the fallback, so two channels in one run are
-  // still distinguishable.
-  assert.deepEqual(describeStep({ name: "summarize:c3", status: "running" }), {
-    label: "Сжимаю через DeepSeek",
-    detail: "канал 3",
-    status: "running",
-  });
-  assert.equal(describeStep({ name: "deliver:c1", status: "failed" }).status, "failed");
-  // An unknown stage must not produce an empty row.
-  assert.equal(describeStep({ name: "mystery", status: "ok" }).label, "mystery");
-});
 
 test("period labels read like Russian, not like hours", () => {
   assert.equal(periodLabelFor(6), "6 ч");

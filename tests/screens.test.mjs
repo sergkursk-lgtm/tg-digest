@@ -342,13 +342,45 @@ test("the new-digest sheet promises nothing about the bot", async () => {
   assert.ok(!text.includes("в бота"), "digests are not sent anywhere");
 });
 
-test("the run stages no longer include a delivery step", async () => {
-  const { describeStep } = await load("screen-digests.js");
-  // The pipeline has no `deliver` stage any more; an old run record that still carries one
-  // must not produce an empty row.
-  const stale = describeStep({ name: "deliver:c1", status: "ok" });
-  assert.equal(stale.label, "deliver");
-  assert.equal(describeStep({ name: "store:c1", status: "ok" }).label, "Сохраняю дайджест");
+test("the run's progress is read from the stages it has reported", async () => {
+  const { progressOf } = await load("screen-digests.js");
+
+  assert.equal(progressOf(null), 0);
+  assert.equal(progressOf({ status: "running", steps: [] }), 0);
+
+  // Only what has actually been reported counts, and the furthest stage wins.
+  assert.equal(progressOf({ status: "running", steps: [{ name: "load_settings", status: "ok" }] }), 6);
+  assert.equal(
+    progressOf({
+      status: "running",
+      steps: [
+        { name: "load_settings", status: "ok" },
+        { name: "read:c1", status: "running" },
+      ],
+    }),
+    45,
+  );
+  // A stage that has not started yet does not count.
+  assert.equal(
+    progressOf({ status: "running", steps: [{ name: "summarize:c1", status: "pending" }] }),
+    0,
+  );
+  // Two channels do not stack: the bar is a share of one run, not a sum.
+  assert.equal(
+    progressOf({
+      status: "running",
+      steps: [
+        { name: "read:c1", status: "ok" },
+        { name: "read:c2", status: "ok" },
+      ],
+    }),
+    45,
+  );
+  // A finished run is done, whatever it reported on the way.
+  assert.equal(progressOf({ status: "ok", steps: [] }), 100);
+
+  // An unknown stage from a newer workflow cannot push the bar past the known ones.
+  assert.equal(progressOf({ status: "running", steps: [{ name: "teleport", status: "ok" }] }), 0);
 });
 
 test("the digest screen offers delete, not resend", async () => {
@@ -359,4 +391,53 @@ test("the digest screen offers delete, not resend", async () => {
   );
   assert.ok(!source.includes("sendToBot"), "the browser must not send anything to Telegram");
   assert.ok(source.includes('label: "Удалить"'), "the detail screen offers delete");
+});
+
+test("the run sheet shows a bar, not a growing list of stages", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(
+    new URL("../frontend/assets/screen-digests.js", import.meta.url),
+    "utf8",
+  );
+  // The list of stage lines is gone, and so is the line about GitHub Actions.
+  assert.ok(!source.includes("stepList"), "the sheet must not list stages");
+  assert.ok(!source.includes("GitHub Actions"), "the reader does not need to know where it runs");
+  assert.match(source, /progressBar\(/);
+
+  // The only caption left is the estimate, and it stays put.
+  assert.match(source, /Обычно это занимает около минуты/);
+});
+
+test("the bar eases towards what it was told, and never past it", async () => {
+  const { progressBar } = await load("ui.js");
+  const bar = progressBar({ label: "Обычно это занимает около минуты." });
+
+  assert.equal(bar.value(), 0);
+  assert.equal(bar.target(), 0);
+
+  bar.set(45);
+  assert.equal(bar.target(), 45);
+  // The bar runs towards the milestone instead of jumping, which is the point of it.
+  assert.ok(bar.value() > 0 && bar.value() < 45, `eased, got ${bar.value()}`);
+
+  // Out of range is clamped, and the bar never moves backwards.
+  bar.set(1000);
+  assert.equal(bar.target(), 100);
+  const before = bar.value();
+  bar.set(-5);
+  assert.equal(bar.target(), 100);
+  assert.ok(bar.value() >= before);
+
+  bar.finish();
+  assert.equal(bar.value(), 100);
+
+  const failed = progressBar({});
+  failed.set(20);
+  failed.fail("не вышло");
+  // A failure stops the bar where the run really got to.
+  assert.equal(failed.value(), 20);
+  assert.match(textOf(failed.node), /не вышло/);
+
+  bar.destroy();
+  failed.destroy();
 });
