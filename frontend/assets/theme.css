@@ -598,6 +598,14 @@ a {
   accent-color: var(--accent);
 }
 
+.picker {
+  margin-bottom: 10px;
+}
+
+.picker select {
+  width: 100%;
+}
+
 .preview {
   padding: 12px 14px;
   border: 1px dashed var(--border);

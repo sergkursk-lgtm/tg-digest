@@ -13,11 +13,14 @@ import { sendToBot } from "./telegram.js";
 import {
   PATHS,
   briefTopics,
+  dialogToChannel,
   digestFileName,
   formatDate,
   formatMoment,
   formatTokens,
   formatUsd,
+  isNewerThan,
+  selectableDialogs,
   usageByDay,
 } from "./state.js";
 
@@ -237,6 +240,203 @@ export function createDigestScreen({ snapshot, client }) {
   ]);
 }
 
+/** Poll a probe until it answers or the deadline passes. */
+async function pollUntil(probe, { intervalMs = 4000, timeoutMs = 150_000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const result = await probe();
+    if (result) {
+      return result;
+    }
+    if (Date.now() > deadline) {
+      return null;
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+}
+
+/**
+ * A reusable "add a channel" block: pick one of the account's chats, or type it in.
+ *
+ * The chat directory comes from the telegram-list workflow, which stores it in the private
+ * branch — so the user never has to know a numeric id.
+ *
+ * @param {object} options
+ * @param {object} options.snapshot
+ * @param {object} options.client
+ * @param {Function} [options.onAdded] called after a successful add
+ * @param {HTMLElement} [options.status] shared status line, when the caller has one
+ */
+export function createChannelAdder({ snapshot, client, onAdded, status: shared }) {
+  const status = shared ?? statusLine();
+  const title = field({ label: "Название", placeholder: "Как называть в интерфейсе" });
+  const reference = field({
+    label: "Username или id",
+    placeholder: "@channel или -1001234567890",
+    hint: "для приватных каналов — числовой id",
+  });
+  const type = selectField({
+    label: "Тип",
+    value: "channel",
+    options: [
+      { value: "channel", label: "Канал" },
+      { value: "group", label: "Группа" },
+      { value: "forum", label: "Форум с топиками" },
+      { value: "user", label: "Личный чат" },
+    ],
+  });
+  const period = field({ label: "Период по умолчанию, часов", type: "number", value: "24" });
+  const picker = el("div", { class: "picker" });
+
+  /** Fill the manual fields from a chat in the directory. */
+  const choose = (item) => {
+    const picked = dialogToChannel(item);
+    title.input.value = picked.title;
+    reference.input.value = picked.username ? `@${picked.username}` : picked.title && picked.tg_id;
+    type.input.value = picked.type;
+    setStatus(status, `Выбран чат «${picked.title}». Проверьте период и нажмите «Добавить».`, "info");
+  };
+
+  /** Render the chat dropdown from the stored directory. */
+  const renderPicker = async () => {
+    picker.replaceChildren();
+    const stored = await client.readJson(PATHS.dialogs);
+    const items = selectableDialogs(stored?.data?.items);
+    if (!items.length) {
+      picker.append(
+        el("p", { class: "muted", text: "Список чатов ещё не собран — нажмите «Обновить список чатов»." }),
+      );
+      return;
+    }
+    picker.append(
+      el("label", { class: "field" }, [
+        el("span", { class: "field__label", text: "Выбрать из моих чатов" }),
+        el(
+          "select",
+          {
+            class: "input",
+            on: {
+              change: (event) => {
+                const item = items[Number(event.target.value)];
+                if (item) {
+                  choose(item);
+                }
+              },
+            },
+          },
+          [
+            el("option", { value: "", text: `— выберите из ${items.length} чатов —` }),
+            ...items.map((item, index) =>
+              el("option", {
+                value: String(index),
+                text: `${item.is_forum ? "▸ " : ""}${item.title} (${item.type})`,
+              }),
+            ),
+          ],
+        ),
+      ]),
+    );
+  };
+
+  const refreshChats = el("button", {
+    class: "button",
+    type: "button",
+    text: "Обновить список чатов",
+    on: {
+      click: async (event) => {
+        const button = event.currentTarget;
+        button.disabled = true;
+        try {
+          setStatus(status, "Запрашиваю список чатов из Telegram…");
+          const startedAt = Date.now();
+          await client.dispatch("telegram-list.yml", { mode: "dialogs", limit: "300" });
+          const ready = await pollUntil(async () => {
+            const stored = await client.readJson(PATHS.dialogs);
+            return isNewerThan(stored?.data, startedAt) ? stored.data : null;
+          });
+          if (!ready) {
+            throw new Error("список не собрался за две минуты — посмотрите Actions → telegram-list");
+          }
+          setStatus(status, `Получено чатов: ${ready.items.length}.`, "ok");
+          await renderPicker();
+        } catch (error) {
+          setStatus(status, error.message, "error");
+        } finally {
+          button.disabled = false;
+        }
+      },
+    },
+  });
+
+  const add = el("button", {
+    class: "button button--primary",
+    type: "button",
+    text: "Добавить канал",
+    on: {
+      click: async (event) => {
+        const button = event.currentTarget;
+        button.disabled = true;
+        try {
+          const raw = reference.input.value.trim();
+          if (!title.input.value.trim() || !raw) {
+            throw new Error("заполните название и ссылку");
+          }
+          const username = raw.startsWith("@") ? raw.slice(1) : "";
+          const numeric = raw.replace(/^@/, "");
+          const tgId = /^-?\d+$/.test(numeric) ? numeric : null;
+          if (!username && !tgId) {
+            throw new Error("укажите @username или числовой id");
+          }
+
+          const record = buildChannel(
+            snapshot.channels,
+            {
+              title: title.input.value.trim(),
+              username,
+              tg_id: tgId ?? numeric,
+              type: type.input.value,
+              has_topics: type.input.value === "forum",
+              default_period_hours: Number(period.input.value || 24),
+            },
+            new Date().toISOString(),
+          );
+          setStatus(status, "Сохраняю…");
+          await saveList(
+            client,
+            PATHS.channels,
+            snapshot.channelsSha,
+            [...snapshot.channels, record],
+            `feat(channels): add ${record.title}`,
+          );
+          setStatus(status, `Канал «${record.title}» добавлен.`, "ok");
+          if (onAdded) {
+            await onAdded();
+          }
+        } catch (error) {
+          setStatus(status, error.message, "error");
+        } finally {
+          button.disabled = false;
+        }
+      },
+    },
+  });
+
+  renderPicker();
+
+  return el("div", { class: "subcard" }, [
+    el("strong", { text: "Добавить канал" }),
+    el("p", { class: "muted", text: "Список чатов берётся из вашего аккаунта." }),
+    picker,
+    refreshChats,
+    title.field,
+    reference.field,
+    type.field,
+    period.field,
+    add,
+    shared ? null : status,
+  ]);
+}
+
 /**
  * The settings screen: budget, soft limits and channel management.
  *
@@ -338,6 +538,7 @@ export function createSettingsScreen({ snapshot, client, refresh }) {
     }),
     status,
     el("h2", { text: "Каналы" }),
+    createChannelAdder({ snapshot, client, onAdded: refresh, status }),
     el(
       "ul",
       { class: "list" },

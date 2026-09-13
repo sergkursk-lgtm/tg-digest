@@ -10,6 +10,7 @@ import { test } from "node:test";
 
 import {
   briefTopics,
+  dialogToChannel,
   digestFileName,
   formatDate,
   formatMoment,
@@ -21,6 +22,7 @@ import {
   optionalSteps,
   nextStepId,
   pendingSteps,
+  selectableDialogs,
   setupSteps,
   usageByDay,
   usageSummary,
@@ -287,4 +289,65 @@ test("digestFileName survives a hostile channel title", () => {
 
 test("digestFileName falls back when the digest is empty", () => {
   assert.equal(digestFileName(null), "digest-digest.md");
+});
+
+
+// -- the chat directory -------------------------------------------------------
+
+test("a forum chat becomes a forum channel", () => {
+  const picked = dialogToChannel({
+    id: -1002424956693,
+    title: "SOUEAST S07 клуб",
+    type: "forum",
+    username: null,
+    is_forum: true,
+  });
+  assert.deepEqual(picked, {
+    title: "SOUEAST S07 клуб",
+    tg_id: "-1002424956693",
+    username: "",
+    type: "forum",
+    has_topics: true,
+  });
+});
+
+test("a telegram id stays a string, because it exceeds 2^53", () => {
+  const picked = dialogToChannel({ id: -1002424956693, title: "x", type: "channel" });
+  assert.equal(typeof picked.tg_id, "string");
+  assert.equal(picked.tg_id, "-1002424956693");
+});
+
+test("a forum flag alone is enough to mean topics", () => {
+  const picked = dialogToChannel({ id: 1, title: "x", type: "group", is_forum: true });
+  assert.equal(picked.has_topics, true);
+  assert.equal(picked.type, "group");
+});
+
+test("dialogToChannel survives an empty entry", () => {
+  assert.deepEqual(dialogToChannel(null), {
+    title: "",
+    tg_id: "",
+    username: "",
+    type: "channel",
+    has_topics: false,
+  });
+});
+
+test("only chats worth summarising are offered", () => {
+  const items = [
+    { id: 777000, title: "Telegram", type: "user" },
+    { id: 1, title: "Личный чат", type: "user" },
+    { id: 2, title: "Клуб", type: "forum", is_forum: true },
+    { id: 3, title: "  ", type: "channel" },
+    { id: 4, title: "Канал", type: "channel" },
+  ];
+  assert.deepEqual(
+    selectableDialogs(items).map((item) => item.id),
+    [2, 4],
+  );
+});
+
+test("selectableDialogs tolerates nothing at all", () => {
+  assert.deepEqual(selectableDialogs(null), []);
+  assert.deepEqual(selectableDialogs([]), []);
 });

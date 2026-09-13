@@ -10,6 +10,8 @@ export const PATHS = {
   settings: "data/settings.json",
   loginState: "data/login/state.json",
   loginRequest: "data/login/request.json",
+  dialogs: "data/login/dialogs.json",
+  topics: "data/login/topics.json",
   channels: "data/channels.json",
   presets: "data/presets.json",
   templates: "data/templates.json",
@@ -228,6 +230,40 @@ export function formatTokens(value) {
 /** Format a USD amount with four decimals, the scale a digest actually costs. */
 export function formatUsd(value) {
   return `$${Number(value ?? 0).toFixed(4)}`;
+}
+
+/**
+ * Turn a chat from the account directory into channel form values.
+ *
+ * Picking a chat beats typing a numeric id from memory, and the directory already knows
+ * the title, the username and whether the chat is a forum.
+ *
+ * @param {object} dialog one item of data/login/dialogs.json
+ */
+export function dialogToChannel(dialog) {
+  const type = dialog?.type ?? "channel";
+  return {
+    title: String(dialog?.title ?? ""),
+    // Telegram ids exceed 2^53, so they travel as strings.
+    tg_id: dialog?.id === undefined || dialog?.id === null ? "" : String(dialog.id),
+    username: dialog?.username ?? "",
+    type,
+    has_topics: type === "forum" || Boolean(dialog?.is_forum),
+  };
+}
+
+/**
+ * The chats worth offering as digest sources: no private conversations, no bots, no
+ * Telegram's own service chat.
+ */
+export function selectableDialogs(dialogs) {
+  return (dialogs ?? []).filter(
+    (item) =>
+      item &&
+      item.type !== "user" &&
+      Number(item.id) !== 777000 && // Telegram's service account
+      String(item.title ?? "").trim() !== "",
+  );
 }
 
 /** Format an ISO timestamp for a Russian reader, or a dash when absent. */

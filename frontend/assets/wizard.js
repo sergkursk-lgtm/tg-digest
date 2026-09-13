@@ -22,13 +22,16 @@ import {
   DEEPSEEK_SECRET,
   PATHS,
   TELEGRAM_SECRETS,
+  dialogToChannel,
   isNewerThan,
   loadSnapshot,
   optionalSteps,
   pendingSteps,
+  selectableDialogs,
   setupSteps,
 } from "./state.js";
 import { DEFAULT_REPO, parseRepo, saveRepo, saveVault } from "./local.js";
+import { createChannelAdder } from "./screens.js";
 
 const DEEPSEEK_API = "https://api.deepseek.com";
 const TELEGRAM_API = "https://api.telegram.org";
@@ -822,78 +825,18 @@ export function createWizard({ mount, context, nacl, refresh, onComplete, client
 
     /** Step 7: at least one channel to summarise. */
     channels: (node) => {
-      const status = statusLine();
-      const title = field({ label: "Название", placeholder: "Как называть в интерфейсе" });
-      const reference = field({
-        label: "Username или id",
-        placeholder: "@channel или -1001234567890",
-        hint: "для приватных каналов — числовой id",
-      });
-      const type = el("select", { class: "input" }, [
-        el("option", { value: "channel", text: "Канал" }),
-        el("option", { value: "group", text: "Группа" }),
-        el("option", { value: "forum", text: "Форум с топиками" }),
-        el("option", { value: "user", text: "Личный чат" }),
-      ]);
-      const period = field({ label: "Период по умолчанию, часов", type: "number", value: "24" });
-
       node.append(
         el("h2", { text: "Каналы" }),
-        el("p", { class: "lede", text: "Добавьте хотя бы один источник. Остальные можно добавить позже." }),
-        title.field,
-        reference.field,
-        el("label", { class: "field" }, [el("span", { class: "field__label", text: "Тип" }), type]),
-        period.field,
-        el("button", {
-          class: "button button--primary",
-          type: "button",
-          text: "Добавить канал",
-          on: {
-            click: async (event) => {
-              const button = event.currentTarget;
-              button.disabled = true;
-              try {
-                const raw = reference.input.value.trim();
-                if (!title.input.value.trim() || !raw) {
-                  throw new Error("заполните название и ссылку");
-                }
-                const username = raw.startsWith("@") ? raw.slice(1) : "";
-                const numeric = raw.replace(/^@/, "");
-                const tgId = /^-?\d+$/.test(numeric) ? numeric : null;
-                if (!username && !tgId) {
-                  throw new Error("укажите @username или числовой id");
-                }
-
-                const record = buildChannel(
-                  snapshot.channels,
-                  {
-                    title: title.input.value.trim(),
-                    username,
-                    tg_id: tgId ?? numeric,
-                    type,
-                    has_topics: type.value === "forum",
-                    default_period_hours: Number(period.input.value || 24),
-                  },
-                  new Date().toISOString(),
-                );
-                const payload = {
-                  schema: 1,
-                  updated_at: new Date().toISOString(),
-                  items: [...snapshot.channels, record],
-                };
-                setStatus(status, "Сохраняю…");
-                await context.client.writeJson(PATHS.channels, payload, `feat(channels): add ${record.title}`, snapshot.channelsSha);
-                setStatus(status, `Канал «${record.title}» добавлен.`, "ok");
-                await advance();
-              } catch (error) {
-                setStatus(status, error.message, "error");
-              } finally {
-                button.disabled = false;
-              }
-            },
-          },
+        el("p", {
+          class: "lede",
+          text: "Добавьте хотя бы один источник. Остальные можно добавить позже на этом же экране.",
         }),
-        status,
+        // The same block the settings screen uses, so channels are added one way.
+        createChannelAdder({
+          snapshot,
+          client: context.client,
+          onAdded: () => advance(),
+        }),
       );
     },
   };
