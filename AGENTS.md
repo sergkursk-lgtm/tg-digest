@@ -7,11 +7,10 @@
 ## Стек
 
 - HTML5, CSS3 на переменных, Vanilla JS. **ES-модули, без сборщиков.**
-- **Никаких CDN и сторонних скриптов из сети.** Единственное исключение —
-  `frontend/vendor/tweetnacl.js`: он нужен, чтобы зашифровать секреты для GitHub
-  (XSalsa20-Poly1305, которого в WebCrypto нет), и лежит в репозитории, а не
-  подгружается со стороны. Библиотека зафиксирована по версии и хэшу в
-  `frontend/vendor/README.md`.
+- **Никаких CDN и сторонних скриптов из сети.** Два исключения, оба лежат в
+  репозитории и зафиксированы по хэшу в `frontend/vendor/README.md`:
+  `tweetnacl.js` (XSalsa20-Poly1305, которого нет в WebCrypto, — нужен для записи
+  секретов) и `telegram-web-app.js` (SDK Mini App: тема клиента и безопасные отступы).
 - Node используется как раннер тестов (`node --test`) и для ручной проверки
   `tools/verify-seal.mjs`; в браузер Node не попадает.
 - `package.json` в корне — только `"type": "module"` и скрипты. Никаких зависимостей
@@ -25,7 +24,7 @@ frontend/
   assets/theme.css    — токены тем и вёрстка
   assets/app.js       — точка входа: PIN-гейт, роутинг, дашборд, подвал
   assets/wizard.js    — мастер первого запуска
-  assets/screens.js   — экраны дайджеста, шаблонов, настроек, статистики
+  assets/miniapp.js   — интеграция с Telegram Mini App (тема, отступы, ready)
   assets/telegram.js  — отправка в бота из браузера (зеркало backend/notifier.py)
   assets/state.js     — чтение ветки data и правила «что настроено» (чистые функции)
   assets/api.js       — клиент GitHub API (Contents, Actions, Secrets)

@@ -14,6 +14,7 @@ import { createGitHub } from "./api.js";
 import { WrongPinError, openVault } from "./crypto.js";
 import { clear, el, field, setStatus, statusLine } from "./dom.js";
 import { clearVault, loadRepo, loadVault } from "./local.js";
+import { setupMiniApp, themeFromTelegram } from "./miniapp.js";
 import {
   PATHS,
   formatMoment,
@@ -61,10 +62,20 @@ function showView(name) {
 
 // -- chrome -------------------------------------------------------------------
 
+/**
+ * The theme Telegram is using, when the page runs as a Mini App.
+ *
+ * Inside Telegram this is a better "system" answer than the OS preference: the client's
+ * theme is what the user actually sees around the page.
+ */
+let telegramTheme = null;
+
 /** Apply a theme choice to the document. */
 function applyTheme(theme) {
-  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const dark = theme === "dark" || (theme !== "light" && prefersDark);
+  const systemDark = telegramTheme
+    ? telegramTheme === "dark"
+    : window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const dark = theme === "dark" || (theme !== "light" && systemDark);
   document.documentElement.dataset.theme = dark ? "dark" : "light";
   const toggle = document.getElementById("theme-toggle");
   if (toggle) {
@@ -583,6 +594,20 @@ function initFooter() {
 
 /** Start the application. */
 function boot() {
+  const miniApp = setupMiniApp({
+    scope: window,
+    onThemeChange: (theme) => {
+      telegramTheme = theme;
+      // Telegram's theme only wins while the user has not chosen one themselves.
+      if (readTheme() === "system") {
+        applyTheme("system");
+      }
+    },
+  });
+  if (miniApp) {
+    telegramTheme = themeFromTelegram(miniApp);
+  }
+
   initTheme();
   initFooter();
   renderTariff();

@@ -500,6 +500,16 @@ a {
 
 /* Tabs -------------------------------------------------------------------- */
 
+/* Mini App: the webview is full-screen, so respect Telegram's insets. */
+
+:root[data-miniapp="true"] .topbar {
+  padding-top: calc(12px + var(--tg-inset-top, 0px));
+}
+
+:root[data-miniapp="true"] .footer {
+  padding-bottom: calc(10px + var(--tg-inset-bottom, 0px));
+}
+
 .tabs {
   display: flex;
   flex-wrap: wrap;

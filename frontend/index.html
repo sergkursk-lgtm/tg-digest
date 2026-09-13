@@ -64,8 +64,11 @@
       <span class="footer__muted">модель: <span id="footer-model">deepseek-flash</span></span>
     </footer>
 
-    <!-- Vendored UMD library: it must be a classic script, so it lands on window.nacl. -->
+    <!-- Vendored UMD libraries: both must be classic scripts, so they land on window. -->
     <script src="./vendor/tweetnacl.js"></script>
+    <!-- Telegram's Mini App SDK. It is harmless in a normal browser: it just finds no
+         initData and reports itself as not inside Telegram. -->
+    <script src="./vendor/telegram-web-app.js"></script>
     <script type="module" src="./assets/app.js"></script>
   </body>
 </html>
