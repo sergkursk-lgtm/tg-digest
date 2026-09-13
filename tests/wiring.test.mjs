@@ -263,3 +263,19 @@ test("the vendored libraries are present and self-identifying", async () => {
   const sdk = await readFile(new URL("frontend/vendor/telegram-web-app.js", ROOT), "utf8");
   assert.match(sdk, /WebApp/);
 });
+
+
+test("every icon-only button in the header is painted by a script", async () => {
+  // The back button was written into index.html empty and nothing ever filled it, so on a
+  // pushed screen the reader saw no way back: a quiet round button with no glyph is a hole.
+  const html = await readFile(new URL("frontend/index.html", ROOT), "utf8");
+  const app = await readAsset("app.js");
+
+  for (const [id, variable] of [
+    ["nav-back", "backButton"],
+    ["theme-toggle", "themeButton"],
+  ]) {
+    assert.ok(html.includes(`id="${id}"`), `${id} is missing from the shell`);
+    assert.match(app, new RegExp(`${variable}\\.append\\(icon\\(`), `${id} is never given an icon`);
+  }
+});

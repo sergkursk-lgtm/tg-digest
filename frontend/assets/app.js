@@ -83,6 +83,22 @@ let stack = [];
  */
 let telegramTheme = null;
 
+/**
+ * Paint the header's back button.
+ *
+ * It is an icon-only control, so without a glyph it is an empty circle: present in the DOM,
+ * reachable by a screen reader, and invisible to everyone else.
+ */
+function paintBackButton() {
+  if (!backButton) {
+    return;
+  }
+  clear(backButton);
+  backButton.append(icon("back", 20));
+  backButton.title = "Назад";
+  backButton.setAttribute("aria-label", "Назад");
+}
+
 /** Apply a theme choice to the document. */
 function applyTheme(theme) {
   const systemDark = telegramTheme
@@ -122,6 +138,7 @@ function setTheme(theme) {
 /** Wire the theme button: it cycles system → light → dark. */
 function initTheme() {
   applyTheme(readTheme());
+  paintBackButton();
 
   themeButton?.addEventListener("click", () => {
     haptic("select");
