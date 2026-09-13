@@ -368,6 +368,9 @@ function createChannelsTab() {
     }),
   ]);
 
+  const delivery = snapshot.settings?.values?.telegram ?? {};
+  const deliveryReady = Boolean(delivery.bot_token && delivery.chat_id);
+
   return el("section", { class: "card" }, [
     el("h1", { text: "Каналы" }),
     el("p", {
@@ -376,6 +379,12 @@ function createChannelsTab() {
         ? `Каналов: ${snapshot.channels.length}. Период — у каждого свой.`
         : "Каналов пока нет.",
     }),
+    deliveryReady
+      ? null
+      : el("p", {
+          class: "status status--warn",
+          text: "Доставка в Telegram не настроена: дайджесты сохраняются здесь, но в бота не уходят.",
+        }),
     runRow,
     status,
     renderChannels(),

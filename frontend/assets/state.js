@@ -119,6 +119,9 @@ export function setupSteps(snapshot, secretNames = []) {
       hint: "пока сессия лежит в приватной ветке; её лучше перенести в Secrets",
       done: sessionInSecrets,
       hidden: !sessionReady || sessionInSecrets,
+      // The backend reads the session from the branch too, so this is an improvement
+      // rather than a requirement.
+      optional: true,
     },
     {
       id: "deepseek",
@@ -133,6 +136,9 @@ export function setupSteps(snapshot, secretNames = []) {
       hint: "токен бота от @BotFather и ваш chat_id",
       done: botReady,
       hidden: false,
+      // A digest is still stored and readable without a bot; refusing to show anything
+      // until delivery is configured would be the wrong way round.
+      optional: true,
     },
     {
       id: "channels",
@@ -144,9 +150,18 @@ export function setupSteps(snapshot, secretNames = []) {
   ];
 }
 
-/** The visible, not-yet-finished steps. */
+/**
+ * The steps that still block the application.
+ *
+ * Optional steps are left out: they improve the setup but the project works without them.
+ */
 export function pendingSteps(steps) {
-  return steps.filter((step) => !step.hidden && !step.done);
+  return steps.filter((step) => !step.hidden && !step.done && !step.optional);
+}
+
+/** Optional steps the user may still want to do. */
+export function optionalSteps(steps) {
+  return steps.filter((step) => !step.hidden && !step.done && step.optional);
 }
 
 /** The id of the step the wizard should open. */
@@ -154,7 +169,7 @@ export function nextStepId(steps) {
   return pendingSteps(steps)[0]?.id ?? null;
 }
 
-/** True when every visible step is done. */
+/** True when nothing that blocks the application is left. */
 export function isSetupComplete(steps) {
   return pendingSteps(steps).length === 0;
 }

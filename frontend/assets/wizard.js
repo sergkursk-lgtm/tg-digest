@@ -24,6 +24,8 @@ import {
   TELEGRAM_SECRETS,
   isNewerThan,
   loadSnapshot,
+  optionalSteps,
+  pendingSteps,
   setupSteps,
 } from "./state.js";
 import { DEFAULT_REPO, parseRepo, saveRepo, saveVault } from "./local.js";
@@ -205,17 +207,49 @@ export function createWizard({ mount, context, nacl, refresh, onComplete, client
   function render() {
     const steps = setupSteps(snapshot, secretNames);
     const visible = steps.filter((step) => !step.hidden);
-    const pending = visible.filter((step) => !step.done);
-    if (!activeStepId || !pending.some((step) => step.id === activeStepId)) {
-      activeStepId = pending[0]?.id ?? null;
+    const blocking = pendingSteps(steps);
+    const optional = optionalSteps(steps);
+
+    if (!activeStepId || !visible.some((step) => step.id === activeStepId && !step.done)) {
+      activeStepId = blocking[0]?.id ?? null;
     }
 
     clear(mount);
     if (!activeStepId) {
+      // Nothing required is left; optional steps stay reachable, and the application is
+      // usable either way.
       mount.append(
         el("section", { class: "card" }, [
-          el("h1", { text: "Всё настроено" }),
+          el("h1", { text: "Всё готово" }),
           el("p", { class: "lede", text: "Можно запускать дайджесты." }),
+          optional.length
+            ? el("div", {}, [
+                el("h2", { text: "Необязательно" }),
+                el(
+                  "ul",
+                  { class: "list" },
+                  optional.map((step) =>
+                    el("li", { class: "list__item" }, [
+                      el("div", {}, [
+                        el("span", { class: "list__title", text: step.title }),
+                        el("span", { class: "list__sub", text: ` ${step.hint}` }),
+                      ]),
+                      el("button", {
+                        class: "button",
+                        type: "button",
+                        text: "Настроить",
+                        on: {
+                          click: () => {
+                            activeStepId = step.id;
+                            render();
+                          },
+                        },
+                      }),
+                    ]),
+                  ),
+                ),
+              ])
+            : null,
           el("button", {
             class: "button button--primary",
             type: "button",
@@ -241,6 +275,20 @@ export function createWizard({ mount, context, nacl, refresh, onComplete, client
     const body = el("section", { class: "card card--step" });
     mount.append(body);
     STEPS[activeStepId](body);
+
+    const active = visible.find((step) => step.id === activeStepId);
+    if (active?.optional) {
+      // Without this the user could open an optional step and have no way back, because
+      // the dashboard is reached from the "done" card.
+      body.append(
+        el("button", {
+          class: "button button--link",
+          type: "button",
+          text: "Пропустить — это необязательно",
+          on: { click: skipOptional },
+        }),
+      );
+    }
   }
 
   /** The checklist of setup steps. */
@@ -261,10 +309,19 @@ export function createWizard({ mount, context, nacl, refresh, onComplete, client
               },
             },
           }),
-          el("span", { class: "steps__hint", text: step.hint }),
+          el("span", {
+            class: "steps__hint",
+            text: step.optional && !step.done ? `${step.hint} — необязательно` : step.hint,
+          }),
         ]),
       ),
     );
+  }
+
+  /** Skip an optional step and, if nothing blocks, finish the wizard. */
+  async function skipOptional() {
+    activeStepId = null;
+    await advance();
   }
 
   /** Move to the next pending step after a successful action. */

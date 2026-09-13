@@ -18,6 +18,7 @@ import {
   isNewerThan,
   isSetupComplete,
   monthKey,
+  optionalSteps,
   nextStepId,
   pendingSteps,
   setupSteps,
@@ -42,14 +43,41 @@ function step(steps, id) {
 
 // -- the checklist ------------------------------------------------------------
 
-test("nothing configured leaves every visible step pending", () => {
+test("nothing configured leaves every required step pending", () => {
   const steps = setupSteps(snapshot(), []);
   assert.deepEqual(
     pendingSteps(steps).map((entry) => entry.id),
-    ["telegram-app", "deepseek", "bot", "channels"],
+    ["telegram-app", "deepseek", "channels"],
   );
   assert.equal(nextStepId(steps), "telegram-app");
   assert.equal(isSetupComplete(steps), false);
+});
+
+test("delivery is offered but does not block the application", () => {
+  // A digest is stored and readable without a bot; refusing to show anything until
+  // delivery is configured would be the wrong way round.
+  const steps = setupSteps(
+    snapshot({
+      login: { step: "authorized", api_id: 1, api_hash: "h" },
+      channels: [{ id: 1 }],
+    }),
+    ["TG_STRING_SESSION", "DEEPSEEK_API_KEY"],
+  );
+  assert.deepEqual(optionalSteps(steps).map((entry) => entry.id), ["bot"]);
+  assert.equal(isSetupComplete(steps), true);
+  assert.equal(nextStepId(steps), null);
+});
+
+test("moving the session into Secrets is optional too", () => {
+  const steps = setupSteps(
+    snapshot({ login: { step: "authorized", api_id: 1, api_hash: "h" } }),
+    ["DEEPSEEK_API_KEY"],
+  );
+  // Bot delivery is still unconfigured, so it is offered as well.
+  assert.deepEqual(optionalSteps(steps).map((entry) => entry.id), [
+    "telegram-session",
+    "bot",
+  ]);
 });
 
 test("api credentials already in Secrets still require the phone and a code", () => {
