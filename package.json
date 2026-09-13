@@ -1,0 +1,11 @@
+{
+  "name": "tg-digest-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Static UI for tg-digest: GitHub Pages, ES modules, no bundler.",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "verify-seal": "node tools/verify-seal.mjs"
+  }
+}
