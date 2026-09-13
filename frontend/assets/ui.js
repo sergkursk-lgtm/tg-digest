@@ -103,59 +103,50 @@ export function installPressFeedback(root = globalThis.document) {
 
 // -- swipe --------------------------------------------------------------------
 
-/** How far a swiped row travels to reveal its action. */
+/** How far a swiped row travels while the gesture is in progress. */
 export const SWIPE_WIDTH = 104;
 
-/** Drag distance past which the row stays open. */
-export const SWIPE_TRIGGER = 44;
+/** Drag distance past which letting go acts on the row. */
+export const SWIPE_TRIGGER = 56;
 
 /**
- * Decide where a swiped row settles.
+ * Decide whether a swipe has gone far enough to act.
  *
- * Pure so the gesture can be reasoned about without a touchscreen: the whole decision is
- * "did the finger travel far enough, in the right direction, to change the state".
+ * Pure, so the gesture can be reasoned about without a touchscreen: the whole decision is
+ * "did the finger travel far enough, to the left, to mean it".
  *
  * @param {object} options
- * @param {number} options.dx total horizontal travel, negative to the left
- * @param {boolean} options.open whether the row is open now
- * @returns {"open"|"closed"}
+ * @param {number} options.dx horizontal travel, negative to the left
+ * @returns {boolean}
  */
-export function swipeOutcome({ dx, open, trigger = SWIPE_TRIGGER }) {
-  const base = open ? -1 : 0;
-  const travel = dx + base * SWIPE_WIDTH;
-  if (open) {
-    return travel > -trigger ? "closed" : "open";
-  }
-  return travel < -trigger ? "open" : "closed";
+export function swipeOutcome({ dx, trigger = SWIPE_TRIGGER }) {
+  return dx <= -trigger;
 }
 
 /**
- * Make a row reveal an action when it is swiped to the left.
+ * Swipe a row to the left to act on it.
  *
- * @param {HTMLElement} wrapper the positioned container
+ * There is no button behind the row and no dialog after it: the gesture *is* the action.
+ * While the finger is down the row follows it and turns red once the gesture has gone far
+ * enough, so "delete" is visible before it happens; letting go either acts or springs back.
+ * The caller is responsible for offering a way back, which is what the undo toast is for.
+ *
+ * @param {HTMLElement} wrapper the positioned container, marked with the armed state
  * @param {HTMLElement} content the part that slides
- * @returns {{close: Function, isOpen: Function, destroy: Function}}
+ * @param {object} options
+ * @param {() => void} options.onTrigger called once when the gesture completes
  */
-export function swipeToReveal(wrapper, content, { width = SWIPE_WIDTH, trigger = SWIPE_TRIGGER } = {}) {
-  let open = false;
+export function swipeToDelete(wrapper, content, { width = SWIPE_WIDTH, trigger = SWIPE_TRIGGER, onTrigger } = {}) {
   let dragging = false;
+  let dx = 0;
   let startX = 0;
   let startY = 0;
-  let dx = 0;
 
-  const offset = (value) => {
+  const paint = (value) => {
     content.style.transform = value ? `translateX(${value}px)` : "";
-    wrapper.dataset.swipe = value ? "open" : "closed";
-  };
-
-  const close = () => {
-    open = false;
-    offset(0);
-  };
-
-  const openRow = () => {
-    open = true;
-    offset(-width);
+    const armed = value <= -trigger;
+    wrapper.classList.toggle("swipe--armed", armed);
+    content.setAttribute("aria-describedby", armed ? "swipe-hint" : null);
   };
 
   const onStart = (event) => {
@@ -187,24 +178,20 @@ export function swipeToReveal(wrapper, content, { width = SWIPE_WIDTH, trigger =
       dragging = true;
     }
     event.preventDefault();
-    const base = open ? -width : 0;
-    const next = Math.max(-width, Math.min(0, base + dx));
-    offset(next);
+    // Only to the left: there is nothing to the right, and a rubber band that goes
+    // nowhere reads as a bug.
+    paint(Math.max(-width, Math.min(0, dx)));
   };
 
   const onEnd = () => {
     if (!dragging) {
-      // A tap on an open row puts it back instead of opening the digest.
-      if (open) {
-        close();
-      }
       return;
     }
     dragging = false;
-    if (swipeOutcome({ dx, open, trigger }) === "open") {
-      openRow();
-    } else {
-      close();
+    const acted = swipeOutcome({ dx, trigger });
+    paint(0);
+    if (acted) {
+      onTrigger?.();
     }
   };
 
@@ -215,8 +202,6 @@ export function swipeToReveal(wrapper, content, { width = SWIPE_WIDTH, trigger =
   content.addEventListener("touchcancel", onEnd);
 
   return {
-    close,
-    isOpen: () => open,
     destroy() {
       content.removeEventListener("touchstart", onStart);
       content.removeEventListener("touchmove", onMove);
@@ -721,24 +706,59 @@ let toastHost = null;
 
 /**
  * Show a short message above the bottom navigation.
+ *
+ * An action turns it into a way back: a destructive tap can be undone for as long as the
+ * toast lives, without a dialog in front of it. `kind` alone is still accepted, because
+ * that is how almost every call site uses it.
+ *
  * @param {string} message
- * @param {"info"|"ok"|"error"} [kind]
- * @param {number} [durationMs]
+ * @param {"info"|"ok"|"error"|{kind?: string, durationMs?: number, actionLabel?: string, onAction?: Function}} [options]
  */
-export function toast(message, kind = "info", durationMs = 3200) {
+export function toast(message, options = "info") {
+  const { kind, durationMs, actionLabel, onAction } =
+    typeof options === "string"
+      ? { kind: options, durationMs: 3200, actionLabel: "", onAction: null }
+      : {
+          kind: options.kind ?? "info",
+          durationMs: options.durationMs ?? 3200,
+          actionLabel: options.actionLabel ?? "",
+          onAction: options.onAction ?? null,
+        };
+
   if (!toastHost) {
     toastHost = el("div", { class: "toast-host", role: "status", "aria-live": "polite" });
     document.body.append(toastHost);
   }
-  const node = el("div", { class: `toast toast--${kind}`, text: message });
+
+  const node = el("div", { class: `toast toast--${kind}${actionLabel ? " toast--action" : ""}` }, [
+    el("span", { text: message }),
+    actionLabel
+      ? el("button", {
+          class: "toast__action",
+          type: "button",
+          text: actionLabel,
+          on: {
+            click: () => {
+              // The toast goes away with the tap: an action that has been taken twice is
+              // worse than one that cannot be taken twice.
+              node.remove();
+              onAction?.();
+            },
+          },
+        })
+      : null,
+  ]);
   toastHost.append(node);
   // Two frames: the element must be in the DOM before the class that animates it lands,
   // otherwise the browser collapses both states and nothing moves.
   requestAnimationFrame(() => requestAnimationFrame(() => node.classList.add("toast--in")));
-  setTimeout(() => {
+  const fade = setTimeout(() => {
     node.classList.remove("toast--in");
-    setTimeout(() => node.remove(), 240);
+    const gone = setTimeout(() => node.remove(), 240);
+    // A pending timer must not hold a Node process open in the tests.
+    gone?.unref?.();
   }, durationMs);
+  fade?.unref?.();
   return node;
 }
 

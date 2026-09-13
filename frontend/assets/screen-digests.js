@@ -20,7 +20,6 @@ import {
   button,
   card,
   channelCount,
-  confirmSheet,
   createSheet,
   emptyState,
   haptic,
@@ -29,7 +28,7 @@ import {
   progressBar,
   screen,
   skeletonRows,
-  swipeToReveal,
+  swipeToDelete,
   toast,
 } from "./ui.js";
 
@@ -163,13 +162,45 @@ export function withoutDigest(index, digestId) {
 }
 
 /**
- * Delete one digest: the file, its row in the index, and the thread about it.
+ * The digest index with one entry back in place.
  *
- * The usage record stays where it is. The money was spent whether or not the digest is
+ * The index is newest first, so a restored digest goes back where it was rather than at the
+ * end, which is where the reader expects to find it.
+ */
+export function withDigest(index, item) {
+  const base = index ?? { schema: 1 };
+  const items = (base.items ?? []).filter((entry) => entry?.id !== item.id);
+  const at = items.findIndex(
+    (entry) => String(entry.created_at ?? "") < String(item.created_at ?? ""),
+  );
+  if (at === -1) {
+    items.push(item);
+  } else {
+    items.splice(at, 0, item);
+  }
+  return { ...base, schema: base.schema ?? 1, updated_at: new Date().toISOString(), items };
+}
+
+/** The thread about a digest, kept so that undoing a delete brings the questions back too. */
+function readThread(digestId) {
+  try {
+    return localStorage.getItem(threadKey(digestId));
+  } catch (error) {
+    return null;
+  }
+}
+
+/**
+ * Delete one digest and return everything needed to put it back.
+ *
+ * The usage record stays where it is: the money was spent whether or not the digest is
  * still on screen, and quietly rewriting the month's spend would make the budget lie.
+ *
+ * @returns {Promise<object>} an undo record for {@link restoreDigest}
  */
 export async function deleteDigest(ctx, item) {
   const stored = await ctx.client.readJson(PATHS.digest(item.id));
+  const serialised = readThread(item.id);
   if (stored?.sha) {
     await ctx.client.deleteFile(PATHS.digest(item.id), `chore(digest): remove ${item.id}`, stored.sha);
   }
@@ -185,28 +216,69 @@ export async function deleteDigest(ctx, item) {
   } catch (error) {
     /* storage may be unavailable; the thread then just stays behind */
   }
+  return { item, file: stored?.data ?? null, thread: serialised };
 }
 
-/** Ask before deleting, then delete. */
-async function confirmDeleteDigest(ctx, item) {
-  const confirmed = await confirmSheet({
-    title: "Удалить дайджест?",
-    message: `«${item.channel_title ?? "дайджест"}» за ${periodLabel(item)} будет удалён из ветки данных. Расход в статистике останется — деньги уже потрачены.`,
-    confirmLabel: "Удалить",
-    danger: true,
-  });
-  if (!confirmed) {
-    return false;
+/** Put a deleted digest back: the file, its row in the index, and the thread. */
+export async function restoreDigest(ctx, record) {
+  if (!record?.item) {
+    return;
   }
+  if (record.file) {
+    // The file is gone, so there is no sha to send.
+    await ctx.client.writeJson(
+      PATHS.digest(record.item.id),
+      record.file,
+      `chore(digest): restore ${record.item.id}`,
+      null,
+    );
+  }
+  const index = await ctx.client.readJson(PATHS.digestIndex);
+  await ctx.client.writeJson(
+    PATHS.digestIndex,
+    withDigest(index?.data, record.item),
+    `chore(index): restore ${record.item.id}`,
+    index?.sha ?? null,
+  );
+  if (record.thread) {
+    try {
+      localStorage.setItem(threadKey(record.item.id), record.thread);
+    } catch (error) {
+      /* storage may be unavailable; the digest itself is back either way */
+    }
+  }
+}
+
+/**
+ * Delete a digest and offer a way back for ten seconds.
+ *
+ * A swipe is easy to do by accident on a scrolling list, and a digest costs money and a
+ * minute to rebuild. Undo costs nothing and needs no dialog in the way.
+ */
+export async function deleteDigestWithUndo(ctx, item) {
   try {
-    await deleteDigest(ctx, item);
-    toast("Дайджест удалён", "ok");
+    const record = await deleteDigest(ctx, item);
+    await ctx.refresh({ silent: true });
+    toast(`${item.channel_title ?? "Дайджест"} удалён`, {
+      kind: "ok",
+      durationMs: 10_000,
+      actionLabel: "Вернуть",
+      onAction: async () => {
+        try {
+          await restoreDigest(ctx, record);
+        } catch (error) {
+          toast(`Не удалось вернуть: ${error.message}`, "error");
+          return;
+        }
+        await ctx.refresh({ silent: true });
+        toast("Дайджест вернулся", "ok");
+      },
+    });
+    return true;
   } catch (error) {
     toast(error.message, "error");
     return false;
   }
-  await ctx.refresh({ silent: true });
-  return true;
 }
 
 /** Download a string as a file. */
@@ -301,11 +373,12 @@ export function createDigestsScreen(ctx) {
 }
 
 /**
- * One digest row: tap to read, swipe left to reveal Delete.
+ * One digest row: tap to read it, swipe it to the left to delete it.
  *
- * Delete is behind the row rather than in front of it, so the closed row stays a single
- * clean target. The same action is also a button on the digest itself, which is the path
- * for a keyboard or a mouse.
+ * There is no button behind the row and no question after it. The row follows the finger and
+ * turns red once the swipe has gone far enough, so what is about to happen is visible before
+ * it happens; letting go either does it or springs back, and an undo toast offers the way
+ * back. The digest itself also carries a Delete button, because a keyboard has no swipe.
  */
 function swipeRow(ctx, item) {
   const content = listRow({
@@ -317,22 +390,15 @@ function swipeRow(ctx, item) {
   });
   content.classList.add("swipe__content");
 
-  const remove = el(
-    "button",
-    {
-      class: "swipe__delete",
-      type: "button",
-      "aria-label": `Удалить дайджест за ${periodLabel(item)}`,
-      on: { click: () => confirmDeleteDigest(ctx, item) },
-    },
-    [icon("trash", 20), el("span", { text: "Удалить" })],
-  );
-
-  const wrapper = el("div", { class: "swipe" }, [
-    el("div", { class: "swipe__actions" }, [remove]),
-    content,
+  const hint = el("span", { class: "swipe__hint", id: "swipe-hint" }, [
+    icon("trash", 20),
+    el("span", { text: "Удалить" }),
   ]);
-  swipeToReveal(wrapper, content);
+
+  const wrapper = el("div", { class: "swipe" }, [hint, content]);
+  swipeToDelete(wrapper, content, {
+    onTrigger: () => deleteDigestWithUndo(ctx, item),
+  });
   return wrapper;
 }
 
@@ -693,9 +759,10 @@ export function createDigestDetail(ctx, digestId) {
           icon: "trash",
           variant: "danger",
           onClick: async () => {
-            if (await confirmDeleteDigest(ctx, digest)) {
-              ctx.back();
-            }
+            // Back to the list first: the undo toast is offered over it, and there is
+            // nothing left to read on this screen.
+            ctx.back();
+            await deleteDigestWithUndo(ctx, digest);
           },
         }),
       ]),

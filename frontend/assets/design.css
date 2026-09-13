@@ -585,8 +585,9 @@ a {
 
 /* -- swipe to delete -------------------------------------------------------- */
 
-/* The row slides left and the action is already behind it: nothing appears from nowhere,
-   and the row itself stays a single tap target when it is closed. */
+/* The row follows the finger and the hint behind it turns red once the swipe has gone far
+   enough, so what is about to happen is visible before it happens. There is no button to
+   press afterwards: letting go does it, and an undo toast is the way back. */
 .swipe {
   position: relative;
   overflow: hidden;
@@ -601,13 +602,9 @@ a {
   transition: transform var(--dur-base) var(--ease-out);
 }
 
-.swipe__actions {
+.swipe__hint {
   position: absolute;
   inset: 0 0 0 auto;
-  display: flex;
-}
-
-.swipe__delete {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -618,13 +615,18 @@ a {
   color: #fff;
   font-size: 13px;
   font-weight: 600;
-  border: none;
-  cursor: pointer;
 }
 
-.swipe__delete:active,
-.swipe__delete.is-pressed {
-  background: color-mix(in srgb, var(--danger) 82%, black);
+/* Armed: the row has travelled far enough, and letting go now deletes it. */
+.swipe--armed .swipe__content {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.swipe--armed .swipe__content .list__sub,
+.swipe--armed .swipe__content .list__meta,
+.swipe--armed .swipe__content .chev {
+  color: var(--danger);
 }
 
 /* -- fields ----------------------------------------------------------------- */
@@ -1171,6 +1173,29 @@ a {
 .toast--in {
   opacity: 1;
   transform: none;
+}
+
+/* The host is click-through so a toast never blocks the list; the toast that carries an
+   action has to opt back in. */
+.toast--action {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  pointer-events: auto;
+}
+
+.toast__action {
+  min-height: 32px;
+  padding: 0 var(--s2);
+  border-radius: var(--r-sm);
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.toast__action:active {
+  opacity: 0.7;
 }
 
 .toast--ok { background: var(--ok); color: var(--accent-ink); }

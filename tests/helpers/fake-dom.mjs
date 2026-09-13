@@ -108,6 +108,18 @@ class FakeNode {
     return payload;
   }
 
+  /** Take the node out of its parent, the way `Element.remove` does. */
+  remove() {
+    const siblings = this.parent?.children;
+    if (Array.isArray(siblings)) {
+      const at = siblings.indexOf(this);
+      if (at !== -1) {
+        siblings.splice(at, 1);
+      }
+    }
+    this.parent = null;
+  }
+
   /** Walk up to the nearest ancestor matching a simple tag or class selector. */
   closest(selector) {
     const wanted = String(selector)

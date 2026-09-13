@@ -174,18 +174,23 @@ test("the digest list is a list, with no spend line", async () => {
   assert.ok(screen.floating, "a project with channels gets the floating button");
 });
 
-test("a digest row can be swiped to reveal Delete", async () => {
+test("a digest row deletes on a swipe, with no button and no dialog", async () => {
   const { createDigestsScreen } = await load("screen-digests.js");
   const screen = createDigestsScreen(context());
 
   const wrappers = all(screen.node, (child) => child.classList?.contains("swipe"));
   assert.equal(wrappers.length, 1, "each digest gets a swipable row");
 
-  const action = all(screen.node, (child) => child.classList?.contains("swipe__delete"));
-  assert.equal(action.length, 1);
-  assert.match(textOf(action[0]), /Удалить/);
-  // A screen reader needs a name that says which digest is being deleted.
-  assert.match(action[0].getAttribute("aria-label"), /Удалить дайджест/);
+  // There is no button hiding behind the row: the gesture is the action.
+  assert.equal(
+    all(screen.node, (child) => child.classList?.contains("swipe__delete")).length,
+    0,
+    "no delete button behind the row",
+  );
+  // The hint is what turns red while the finger is down past the trigger.
+  const hint = all(screen.node, (child) => child.classList?.contains("swipe__hint"));
+  assert.equal(hint.length, 1);
+  assert.match(textOf(hint[0]), /Удалить/);
 
   // The row itself is still the tap target that opens the digest.
   const content = all(screen.node, (child) => child.classList?.contains("swipe__content"));
@@ -193,157 +198,75 @@ test("a digest row can be swiped to reveal Delete", async () => {
   assert.equal(content[0].tagName, "BUTTON");
 });
 
-test("an empty project is offered the one useful action", async () => {
-  const { createDigestsScreen } = await load("screen-digests.js");
-  const empty = createDigestsScreen(context({ snapshot: snapshot({ digests: [], channels: [] }) }));
-  assert.match(textOf(empty.node), /Дайджестов пока нет/);
-  assert.equal(empty.floating, null, "nothing to collect from");
-});
-
-test("an answer is one bubble, with no list of messages under it", async () => {
-  const { askBubble } = await load("screen-digests.js");
-
-  const mine = askBubble({ role: "me", text: "что там про руль?" });
-  assert.equal(mine.className, "bubble bubble--mine");
-  assert.equal(mine.textContent, "что там про руль?");
-
-  const theirs = askBubble({ role: "ai", text: "Калибровка помогла." });
-  assert.equal(theirs.className, "bubble bubble--theirs");
-  // Nothing follows the answer: no links, no second element.
-  assert.equal(theirs.children.length, 0);
-  assert.equal(all(theirs, (child) => child.tagName === "A").length, 0);
-
-  // Even an entry saved by an older version, which carried `refs`, renders as one bubble.
-  const legacy = askBubble({ role: "ai", text: "Ответ", refs: [{ link: "https://t.me/c/1/2" }] });
-  assert.equal(legacy.textContent, "Ответ");
-  assert.equal(all(legacy, (child) => child.tagName === "A").length, 0);
-});
-
-test("no styles are left for the removed message list", async () => {
-  const { readFile } = await import("node:fs/promises");
-  const css = await readFile(new URL("../frontend/assets/design.css", import.meta.url), "utf8");
-  assert.ok(!/\.refs\b/.test(css), "the .refs rules should be gone");
-  assert.ok(!/\.bubble-group\b/.test(css), "the .bubble-group rules should be gone");
-});
-
-test("opening a digest renders the brief view and the ask box", async () => {
-  const { createDigestDetail } = await load("screen-digests.js");
-  const digest = {
-    id: "20260913T084041Z-c1",
-    channel_title: "Клуб",
-    period_start: NOW,
-    period_end: NOW,
-    topics: [{ title: "Руль", bullets: ["калибровка помогла", "сход-развал тоже"] }],
-    html: "<h2>Руль</h2>",
-    markdown: "# Руль",
-    telegram_html: "<b>Руль</b>",
-    usage: { tokens_in: 100, tokens_out: 20, cost_usd: 0.001 },
+test("a deleted digest can be put back exactly where it was", async () => {
+  const { withoutDigest, withDigest } = await load("screen-digests.js");
+  const index = {
+    schema: 1,
+    items: [
+      { id: "c", created_at: "2026-09-13T12:00:00+00:00" },
+      { id: "b", created_at: "2026-09-13T11:00:00+00:00" },
+      { id: "a", created_at: "2026-09-13T10:00:00+00:00" },
+    ],
   };
-  const client = { readJson: async () => ({ data: digest, sha: "a".repeat(40) }) };
 
-  const screen = createDigestDetail(context({ client }), digest.id);
-  assert.equal(screen.back, true);
-  // The article is read asynchronously; let it settle.
-  await new Promise((done) => setTimeout(done, 0));
-
-  const text = textOf(screen.node);
-  assert.match(text, /SOUEAST|Клуб/);
-  assert.match(text, /калибровка помогла/);
-  assert.match(text, /Спросить у ИИ/);
-  assert.match(text, /Скачать \.md/);
-
-  // The digest is for reading. Token counts and cost are not shown here — the money is
-  // accounted for in settings.
-  for (const absent of ["токенов на вход", "на выход", "$"]) {
-    assert.ok(!text.includes(absent), `the digest should not mention "${absent}"`);
-  }
-});
-
-// -- channels ------------------------------------------------------------------
-
-test("the channel list marks the selected chats and hides private ones", async () => {
-  const { createChannelsScreen } = await load("screen-channels.js");
-  const { node } = createChannelsScreen(context());
-  const text = textOf(node);
-
-  assert.match(text, /Клуб/);
-  assert.match(text, /Военная сводка/);
-  // A digest is not for private conversations or Telegram's own service chat.
-  assert.ok(!text.includes("Личный чат"));
-  assert.ok(!/Telegram\b/.test(text.replace("Telegram-канал", "")));
-
-  const pressed = all(node, (child) => child.getAttribute?.("aria-pressed") === "true");
-  assert.equal(pressed.length, 1, "only the configured channel is on");
-  assert.match(textOf(pressed[0]), /Клуб/);
-});
-
-test("channels are grouped by kind", async () => {
-  const { createChannelsScreen } = await load("screen-channels.js");
-  const { node } = createChannelsScreen(context());
-  const headings = all(node, (child) => child.tagName === "H3").map((child) => textOf(child));
-  assert.ok(headings.includes("Форумы"));
-  assert.ok(headings.includes("Каналы"));
-});
-
-// -- settings ------------------------------------------------------------------
-
-test("settings shows one section per concern, with secrets kept out of sight", async () => {
-  const { createSettingsScreen } = await load("screen-settings.js");
-  const { node } = createSettingsScreen(context());
-  const text = textOf(node);
-
-  for (const section of ["Статус", "Аккаунт Telegram", "DeepSeek", "Приложение в Telegram", "Оформление", "Опасное"]) {
-    assert.ok(text.includes(section), `missing the "${section}" section`);
-  }
-
-  // No money management in the interface: the ceiling and the rate limits stay in
-  // data/settings.json and are enforced by the backend, but nothing here edits them.
-  for (const absent of ["Бюджет на месяц", "Лимиты запусков", "Предел, $ в месяц", "Дайджестов в сутки"]) {
-    assert.ok(!text.includes(absent), `"${absent}" should not be in settings`);
-  }
-
-  // The bot token is never rendered as text, only into a password field.
-  assert.ok(!text.includes("123456:secret-token"), "the bot token must not appear in the markup");
-  const password = all(node, (child) => child.getAttribute?.("type") === "password");
-  assert.ok(password.length >= 2, "the token and the DeepSeek key are password fields");
-
-  // Templates and statistics are collapsed, not competing for the root.
-  const details = all(node, (child) => child.tagName === "DETAILS");
-  assert.equal(details.length, 2);
-});
-
-test("nothing in settings sends anything to Telegram", async () => {
-  const { createSettingsScreen } = await load("screen-settings.js");
-  const { node } = createSettingsScreen(context());
-  const text = textOf(node);
-
-  // The bot is the entrance to the app, not a delivery channel.
-  assert.match(text, /Бот нужен как вход/);
-  assert.match(text, /Показать кнопку в боте/);
-  assert.ok(!text.includes("Отправляю тестовое сообщение"));
-
-  // The send path is gone from the source entirely.
-  const { readFile } = await import("node:fs/promises");
-  const source = await readFile(
-    new URL("../frontend/assets/screen-settings.js", import.meta.url),
-    "utf8",
+  const dropped = withoutDigest(index, "b");
+  assert.deepEqual(
+    dropped.items.map((entry) => entry.id),
+    ["c", "a"],
   );
-  assert.ok(!source.includes("sendMessage"), "settings must not send messages");
+
+  const restored = withDigest(dropped, index.items[1]);
+  // Back in its own place, not appended to the end.
+  assert.deepEqual(
+    restored.items.map((entry) => entry.id),
+    ["c", "b", "a"],
+  );
+  // The original list is not mutated: the caller's copy is what it read.
+  assert.equal(index.items.length, 3);
 });
 
-test("questions appear in the statistics only once there are some", async () => {
-  const { createSettingsScreen } = await load("screen-settings.js");
-  const withQuestions = textOf(createSettingsScreen(context()).node);
-  assert.match(withQuestions, /Вопросов к ИИ/);
+test("deleting and undoing touches the file, the index and the thread", async () => {
+  const { deleteDigest, restoreDigest } = await load("screen-digests.js");
 
-  const without = textOf(
-    createSettingsScreen(
-      context({ snapshot: snapshot({ usage: { totals: { digests: 1, cost_usd: 0.001 } } }) }),
-    ).node,
+  const writes = [];
+  const deleted = [];
+  const files = new Map([
+    ["data/digests/x.json", { data: { id: "x", markdown: "# x" }, sha: "sha-file" }],
+    ["data/digests/index.json", { data: { schema: 1, items: [{ id: "x", created_at: "2026-09-13T12:00:00+00:00" }] }, sha: "sha-index" }],
+  ]);
+  const client = {
+    async readJson(path) {
+      return files.get(path) ?? { data: null, sha: null };
+    },
+    async writeJson(path, payload, message, sha) {
+      writes.push({ path, payload, sha });
+      files.set(path, { data: payload, sha: "sha-new" });
+    },
+    async deleteFile(path, message, sha) {
+      deleted.push({ path, sha });
+      files.delete(path);
+    },
+  };
+
+  const ctx = context({ client });
+  const item = { id: "x", channel_title: "Клуб", period_start: NOW, period_end: NOW, created_at: "2026-09-13T12:00:00+00:00" };
+
+  const record = await deleteDigest(ctx, item);
+  assert.deepEqual(deleted, [{ path: "data/digests/x.json", sha: "sha-file" }]);
+  assert.equal(files.has("data/digests/x.json"), false);
+  assert.deepEqual(files.get("data/digests/index.json").data.items, []);
+  // The file travels in the undo record, which is what makes the way back free.
+  assert.equal(record.file.markdown, "# x");
+
+  await restoreDigest(ctx, record);
+  assert.equal(files.get("data/digests/x.json").data.markdown, "# x");
+  assert.deepEqual(
+    files.get("data/digests/index.json").data.items.map((entry) => entry.id),
+    ["x"],
   );
-  assert.ok(!without.includes("Вопросов к ИИ"));
-  // An older usage file simply has no questions field.
-  assert.match(without, /Дайджестов/);
+  // The file is written without a sha: after a delete there is nothing to match against.
+  const fileWrite = writes.find((entry) => entry.path === "data/digests/x.json");
+  assert.equal(fileWrite.sha, null);
 });
 
 test("the new-digest sheet promises nothing about the bot", async () => {

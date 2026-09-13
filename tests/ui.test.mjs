@@ -216,13 +216,71 @@ test("a disabled control is never painted as pressed", async () => {
   globalThis.PointerEvent = original;
 });
 
-test("a swipe settles open only past the trigger", async () => {
+test("a swipe counts only once it has gone far enough to the left", async () => {
   const { ui } = await withDom();
-  // A short nudge springs back...
-  assert.equal(ui.swipeOutcome({ dx: -20, open: false }), "closed");
-  // ...and a real swipe stays open.
-  assert.equal(ui.swipeOutcome({ dx: -70, open: false }), "open");
-  // Swiping the other way closes an open row, and a small backward nudge does not.
-  assert.equal(ui.swipeOutcome({ dx: 10, open: true }), "open");
-  assert.equal(ui.swipeOutcome({ dx: 80, open: true }), "closed");
+  assert.equal(ui.swipeOutcome({ dx: -20 }), false, "a nudge is not a decision");
+  assert.equal(ui.swipeOutcome({ dx: -70 }), true);
+  // There is nothing to the right, so dragging that way never acts.
+  assert.equal(ui.swipeOutcome({ dx: 80 }), false);
+});
+
+test("letting go past the trigger acts, and letting go early does not", async () => {
+  const { ui } = await withDom();
+  const drawn = [];
+  const wrapper = {
+    classList: { toggle: (...args) => drawn.push(args) },
+    dataset: {},
+  };
+  const content = {
+    style: {},
+    setAttribute() {},
+    addEventListener() {},
+    removeEventListener() {},
+    listeners: {},
+  };
+  const listeners = new Map();
+  content.addEventListener = (type, handler) => listeners.set(type, handler);
+
+  let acted = 0;
+  ui.swipeToDelete(wrapper, content, { onTrigger: () => (acted += 1) });
+
+  const drag = (points) => {
+    listeners.get("touchstart")({ touches: [points[0]] });
+    for (const point of points.slice(1)) {
+      listeners.get("touchmove")({ touches: [point], preventDefault() {} });
+    }
+    listeners.get("touchend")({});
+  };
+
+  drag([{ clientX: 300, clientY: 100 }, { clientX: 200, clientY: 102 }]);
+  assert.equal(acted, 1, "a real swipe deletes");
+
+  drag([{ clientX: 300, clientY: 100 }, { clientX: 280, clientY: 103 }]);
+  assert.equal(acted, 1, "a nudge does not");
+
+  // A vertical drag is the page scrolling, and must not delete anything.
+  drag([{ clientX: 300, clientY: 100 }, { clientX: 298, clientY: 260 }]);
+  assert.equal(acted, 1, "scrolling is not a swipe");
+
+  // The row is put back either way: nothing stays open behind it.
+  assert.equal(content.style.transform, "");
+});
+
+test("a toast can carry the way back", async () => {
+  const { ui } = await withDom();
+  let undone = 0;
+  const node = ui.toast("Дайджест удалён", {
+    kind: "ok",
+    durationMs: 10_000,
+    actionLabel: "Вернуть",
+    onAction: () => (undone += 1),
+  });
+
+  const button = node.children.find((child) => child.classList?.contains("toast__action"));
+  assert.ok(button, "the toast has an action");
+  assert.equal(button.textContent, "Вернуть");
+  button.fire("click");
+  assert.equal(undone, 1);
+  // Tapping it twice must not undo twice.
+  assert.equal(node.children.includes(button), true);
 });
