@@ -138,16 +138,6 @@ export function mergeTelegramSettings(settings, telegram) {
   };
 }
 
-/** Merge budget settings, keeping the rest of the file intact. */
-export function mergeBudgetSettings(settings, budget) {
-  const base = settings ?? { schema: 1, values: {} };
-  return {
-    ...base,
-    schema: base.schema ?? 1,
-    values: { ...(base.values ?? {}), budget: { ...(base.values?.budget ?? {}), ...budget } },
-  };
-}
-
 /**
  * Build a channel record with the next free id.
  * @param {Array<object>} existing

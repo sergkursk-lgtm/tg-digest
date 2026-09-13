@@ -15,7 +15,6 @@ import {
   SETUP_WORKFLOW,
   callBot,
   discoverChatIds,
-  mergeBudgetSettings,
   mergeTelegramSettings,
   runWorkflow,
   verifyDeepSeekKey,
@@ -46,44 +45,6 @@ function kv(key, value, kind = "") {
     el("span", { class: `kv__v${kind ? ` kv__v--${kind}` : ""}`, text: value }),
   ]);
 }
-
-/** A number input with a label and a save button. */
-function numberRow({ label, value, hint, min, max, step = "any", onSave }) {
-  const input = el("input", {
-    class: "input",
-    type: "number",
-    inputmode: "decimal",
-    min: String(min),
-    max: String(max),
-    step: String(step),
-  });
-  input.value = String(value);
-  const status = statusLine();
-  const save = actionButton({
-    label: "Сохранить",
-    variant: "primary",
-    busyLabel: "…",
-    action: async () => {
-      try {
-        await onSave(input.value);
-        setStatus(status, "Сохранено.", "ok");
-      } catch (error) {
-        setStatus(status, error.message, "error");
-      }
-    },
-  });
-  return el("div", { class: "stack" }, [
-    el("label", { class: "field" }, [
-      el("span", { class: "field__label", text: label }),
-      input,
-      hint ? el("span", { class: "field__hint", text: hint }) : null,
-    ]),
-    save,
-    status,
-  ]);
-}
-
-// -- sections -----------------------------------------------------------------
 
 /** The setup check: when it last ran and what it found. */
 function statusSection(ctx) {
@@ -360,103 +321,6 @@ function telegramAppSection(ctx) {
   });
 }
 
-/** Monthly budget, with the meter the footer also uses. */
-function budgetSection(ctx) {
-  const summary = usageSummary(ctx.snapshot.usage, ctx.snapshot.settings);
-  const budget = ctx.snapshot.settings?.values?.budget ?? {};
-  const fill = el("div", {
-    class: `meter__fill${summary.status === "ok" ? "" : summary.status === "warn" ? " meter__fill--warn" : " meter__fill--blocked"}`,
-    style: `transform: scaleX(${Math.max(0, Math.min(1, summary.ratio)).toFixed(4)})`,
-  });
-
-  return card({
-    title: "Бюджет на месяц",
-    children: [
-      el("div", { class: "meter" }, [fill]),
-      el("p", {
-        class: "small muted",
-        text: `${formatUsd(summary.costUsd)} из ${formatUsd(summary.limitUsd)} · токенов ${formatTokens(
-          summary.tokensIn + summary.tokensOut,
-        )}`,
-      }),
-      numberRow({
-        label: "Предел, $ в месяц",
-        value: budget.monthly_usd ?? 5,
-        min: 0.1,
-        max: 10000,
-        step: "0.1",
-        hint: "прогон не начнётся, если предел уже исчерпан",
-        onSave: async (raw) => {
-          const value = Number(raw);
-          if (!(value > 0)) {
-            throw new Error("предел должен быть больше нуля");
-          }
-          const merged = mergeBudgetSettings(ctx.snapshot.settings, { monthly_usd: value });
-          await saveSettings(ctx, merged, "chore(settings): set monthly budget");
-          await ctx.refresh({ silent: true });
-        },
-      }),
-      numberRow({
-        label: "Предупреждать при доле, 0–1",
-        value: budget.warn_ratio ?? 0.8,
-        min: 0.1,
-        max: 1,
-        step: "0.05",
-        hint: "0.8 — предупредить при 80 % предела",
-        onSave: async (raw) => {
-          const value = Number(raw);
-          if (!(value > 0 && value <= 1)) {
-            throw new Error("доля должна быть в пределах от 0 до 1");
-          }
-          const merged = mergeBudgetSettings(ctx.snapshot.settings, { warn_ratio: value });
-          await saveSettings(ctx, merged, "chore(settings): set warning ratio");
-          await ctx.refresh({ silent: true });
-        },
-      }),
-    ],
-  });
-}
-
-/** The soft rate limits from the task description. */
-function limitsSection(ctx) {
-  const telegram = ctx.snapshot.settings?.values?.telegram ?? {};
-  return card({
-    title: "Лимиты запусков",
-    children: [
-      numberRow({
-        label: "Дайджестов в сутки",
-        value: telegram.max_digests_per_day ?? 50,
-        min: 1,
-        max: 500,
-        step: "1",
-        onSave: async (raw) => {
-          // The limits live next to the bot settings in data/settings.json, which is
-          // where the backend reads them from.
-          const merged = mergeTelegramSettings(ctx.snapshot.settings, {
-            max_digests_per_day: Number(raw),
-          });
-          await saveSettings(ctx, merged, "chore(settings): set daily limit");
-          await ctx.refresh({ silent: true });
-        },
-      }),
-      numberRow({
-        label: "Запросов в час",
-        value: telegram.max_requests_per_hour ?? 10,
-        min: 1,
-        max: 100,
-        step: "1",
-        onSave: async (raw) => {
-          const merged = mergeTelegramSettings(ctx.snapshot.settings, {
-            max_requests_per_hour: Number(raw),
-          });
-          await saveSettings(ctx, merged, "chore(settings): set hourly limit");
-          await ctx.refresh({ silent: true });
-        },
-      }),
-    ],
-  });
-}
-
 /** The theme chooser. Client-side only: the choice belongs to this browser. */
 function appearanceSection(ctx, { onThemeChange, currentTheme }) {
   const chips = el("div", { class: "chips" });
@@ -635,8 +499,6 @@ export function createSettingsScreen(ctx) {
       telegramSection(ctx),
       deepseekSection(ctx),
       telegramAppSection(ctx),
-      budgetSection(ctx),
-      limitsSection(ctx),
       appearanceSection(ctx, {
         currentTheme: ctx.currentTheme,
         onThemeChange: ctx.setTheme,

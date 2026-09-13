@@ -10,11 +10,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-import {
-  buildChannel,
-  mergeBudgetSettings,
-  mergeTelegramSettings,
-} from "../frontend/assets/backend.js";
+import { buildChannel, mergeTelegramSettings } from "../frontend/assets/backend.js";
 import { periodLabelFor } from "../frontend/assets/screen-channels.js";
 import { channelCount, plural } from "../frontend/assets/ui.js";
 
@@ -92,7 +88,7 @@ test("mergeTelegramSettings works with no existing settings file", () => {
   assert.equal(merged.schema, 1);
 });
 
-test("budget and limit edits leave the other settings alone", () => {
+test("an edit to the telegram block leaves the rest of the settings alone", () => {
   const settings = {
     schema: 1,
     values: {
@@ -100,16 +96,13 @@ test("budget and limit edits leave the other settings alone", () => {
       telegram: { bot_token: "1:a", max_digests_per_day: 50, max_requests_per_hour: 10 },
     },
   };
-  const budget = mergeBudgetSettings(settings, { monthly_usd: 12 });
-  assert.equal(budget.values.budget.monthly_usd, 12);
-  assert.equal(budget.values.budget.warn_ratio, 0.8);
-  assert.equal(budget.values.telegram.bot_token, "1:a");
 
-  // The run limits live in the telegram block, where the backend reads them.
-  const limits = mergeTelegramSettings(settings, { max_requests_per_hour: 4 });
-  assert.equal(limits.values.telegram.max_requests_per_hour, 4);
-  assert.equal(limits.values.telegram.max_digests_per_day, 50);
-  assert.equal(limits.values.telegram.bot_token, "1:a");
+  const telegram = mergeTelegramSettings(settings, { bot_token: "2:b" });
+  assert.equal(telegram.values.telegram.bot_token, "2:b");
+  assert.equal(telegram.values.telegram.max_digests_per_day, 50);
+  // The ceiling is not edited from the interface any more, and must survive untouched.
+  assert.equal(telegram.values.budget.monthly_usd, 5);
+  assert.equal(telegram.values.budget.warn_ratio, 0.8);
 });
 
 // -- channel records ----------------------------------------------------------

@@ -292,8 +292,14 @@ test("settings shows one section per concern, with secrets kept out of sight", a
   const { node } = createSettingsScreen(context());
   const text = textOf(node);
 
-  for (const section of ["Статус", "Аккаунт Telegram", "DeepSeek", "Приложение в Telegram", "Бюджет на месяц", "Лимиты запусков", "Оформление", "Опасное"]) {
+  for (const section of ["Статус", "Аккаунт Telegram", "DeepSeek", "Приложение в Telegram", "Оформление", "Опасное"]) {
     assert.ok(text.includes(section), `missing the "${section}" section`);
+  }
+
+  // No money management in the interface: the ceiling and the rate limits stay in
+  // data/settings.json and are enforced by the backend, but nothing here edits them.
+  for (const absent of ["Бюджет на месяц", "Лимиты запусков", "Предел, $ в месяц", "Дайджестов в сутки"]) {
+    assert.ok(!text.includes(absent), `"${absent}" should not be in settings`);
   }
 
   // The bot token is never rendered as text, only into a password field.
