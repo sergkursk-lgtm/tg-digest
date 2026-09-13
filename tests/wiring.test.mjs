@@ -31,6 +31,7 @@ const ASSETS = [
   "screen-channels.js",
   "screen-digests.js",
   "screen-settings.js",
+  "screen-styles.js",
   "seal.js",
   "state.js",
   "tariff.js",

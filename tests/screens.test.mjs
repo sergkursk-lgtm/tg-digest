@@ -60,7 +60,10 @@ function snapshot(overrides = {}) {
       { id: 1, name: "Краткий", system_prompt_key: "summary_brief", is_default: 1 },
       { id: 2, name: "Детальный", system_prompt_key: "summary_detailed", is_default: 0 },
     ],
-    templates: [{ id: 1, name: "По умолчанию", grouping: "topics", sections: ["summary"], is_default: 1 }],
+    templates: [
+      { id: 1, name: "По умолчанию", grouping: "topics", sections: ["summary"], is_default: 1 },
+      { id: 2, name: "По дням", grouping: "dates", sections: ["summary"], is_default: 0 },
+    ],
     digests: [
       {
         id: "20260913T084041Z-c1",
@@ -270,12 +273,20 @@ test("deleting and undoing touches the file, the index and the thread", async ()
   assert.equal(fileWrite.sha, null);
 });
 
-test("the new-digest sheet promises nothing about the bot", async () => {
+test("the new-digest sheet offers the layouts and promises nothing about the bot", async () => {
   const { openNewDigestSheet } = await load("screen-digests.js");
   const sheet = openNewDigestSheet(context({ client: {}, snapshot: snapshot() }));
   const text = textOf(sheet.body ?? sheet.root);
-  assert.match(text, /1 канал · 24 ч/);
+
+  assert.match(text, /1 канал · 24 ч · 2 стиля · По умолчанию/);
   assert.ok(!text.includes("в бота"), "digests are not sent anywhere");
+
+  // Every layout is offered, and the default one is selected.
+  const chips = all(sheet.body ?? sheet.root, (child) => child.classList?.contains("chip"));
+  const labels = chips.map((chip) => textOf(chip));
+  assert.ok(labels.includes("По умолчанию"));
+  assert.ok(labels.includes("По дням"));
+  assert.equal(chips.find((chip) => textOf(chip) === "По умолчанию").classList.contains("chip--on"), true);
 });
 
 test("the run's progress is read from the stages it has reported", async () => {
@@ -523,4 +534,49 @@ test("the download carries the style it is showing", async () => {
   // downloads folder would be a puzzle.
   assert.equal(digestFileName({ id: "d1", channel_title: "Клуб" }, "Аналитический"), "d1-Клуб-Аналитический.md");
   assert.equal(digestFileName({ id: "d1", channel_title: "Клуб" }), "d1-Клуб.md");
+});
+
+// -- styles and layouts are editable ------------------------------------------
+
+test("the style and layout lists open editors instead of only describing", async () => {
+  const { templatesAccordion } = await load("screen-styles.js");
+  const body = templatesAccordion(context());
+  const text = textOf(body);
+
+  // The reader could see the styles and could not add one; every layout said "по
+  // умолчанию" with no way to choose another.
+  assert.match(text, /Свой стиль/);
+  assert.match(text, /Свой шаблон/);
+  assert.match(text, /Каждый прогон пишет все стили сразу/);
+  assert.match(text, /Шаблоны вёрстки/);
+
+  const rows = all(body, (child) => child.classList?.contains("list__row"));
+  assert.ok(rows.length >= 3, "the styles and the layouts are listed");
+});
+
+test("a layout is described by what it actually does", async () => {
+  const { describeTemplate } = await load("screen-styles.js");
+  assert.equal(describeTemplate({ grouping: "topics", sections: ["summary"] }), "По темам канала · только сводка");
+  assert.equal(describeTemplate({ grouping: "dates", sections: ["summary", "meta"] }), "По дням · сводка и итоги");
+  assert.equal(describeTemplate({ grouping: "llm", sections: ["summary"] }), "По темам от модели · только сводка");
+  // An unknown grouping from a hand-edited file still describes something.
+  assert.match(describeTemplate({ grouping: "mystery", sections: [] }), /mystery/);
+});
+
+test("editing the collections keeps them valid", async () => {
+  const { nextId, upsert, withoutEntry, withDefault } = await load("screen-styles.js");
+
+  assert.equal(nextId([]), 1);
+  assert.equal(nextId([{ id: 3 }, { id: 7 }]), 8);
+
+  const added = upsert([{ id: 1, name: "A" }], { id: 2, name: "B" });
+  assert.deepEqual(added.map((item) => item.id), [1, 2]);
+
+  // Exactly one default: marking one clears the others.
+  const marked = withDefault([{ id: 1, is_default: 1 }, { id: 2, is_default: 0 }], 2);
+  assert.deepEqual(marked.map((item) => item.is_default), [0, 1]);
+
+  // Removing the default promotes the first survivor, so the list never has none.
+  const removed = withoutEntry([{ id: 1, is_default: 1 }, { id: 2, is_default: 0 }], 1);
+  assert.deepEqual(removed, [{ id: 2, is_default: 1 }]);
 });

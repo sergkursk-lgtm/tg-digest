@@ -469,9 +469,12 @@ export function openNewDigestSheet(ctx) {
   }
 
   // Every channel starts selected: "collect everything I follow" is the common case.
+  const templates = snapshot.templates ?? [];
   const selected = new Set(channels.map((channel) => channel.id));
   let hours = Number(channels[0]?.default_period_hours ?? 24);
   let customHours = "";
+  // The layout is one document per run, so unlike the styles it is chosen here.
+  let templateId = (templates.find((entry) => entry.is_default) ?? templates[0])?.id ?? null;
 
   const channelRows = channels.map((channel) => {
     const track = el("span", { class: "switch switch--on" });
@@ -511,12 +514,16 @@ export function openNewDigestSheet(ctx) {
   });
 
   const periodChips = el("div", { class: "chips" });
+  const templateChips = el("div", { class: "chips" });
   const summary = el("p", { class: "small muted" });
 
   function updateSummary() {
     const list = [...selected];
+    const layout = templates.find((entry) => entry.id === templateId)?.name;
     summary.textContent = list.length
-      ? `${channelCount(list.length)} · ${hours} ч · ${styleCount(snapshot.presets)}`
+      ? [channelCount(list.length), `${hours} ч`, styleCount(snapshot.presets), layout]
+          .filter(Boolean)
+          .join(" · ")
       : "Ни один канал не выбран";
     runButton.disabled = list.length === 0;
   }
@@ -568,6 +575,41 @@ export function openNewDigestSheet(ctx) {
     }
   }
 
+  const templateNodes = [];
+
+  function paintTemplates() {
+    for (const entry of templateNodes) {
+      entry.node.classList.toggle("chip--on", entry.id === templateId);
+    }
+  }
+
+  function buildTemplateChips() {
+    if (!templates.length) {
+      templateChips.append(
+        el("p", { class: "small muted", text: "Шаблонов нет — применится стандартный." }),
+      );
+      return;
+    }
+    for (const entry of templates) {
+      const node = el("button", {
+        class: "chip",
+        type: "button",
+        text: entry.name,
+        on: {
+          click: () => {
+            haptic("select");
+            templateId = entry.id;
+            paintTemplates();
+            updateSummary();
+          },
+        },
+      });
+      templateNodes.push({ node, id: entry.id });
+      templateChips.append(node);
+    }
+    paintTemplates();
+  }
+
   const runButton = actionButton({
     label: "Собрать",
     variant: "primary",
@@ -575,7 +617,11 @@ export function openNewDigestSheet(ctx) {
     busyLabel: "Запускаю…",
     action: async () => {
       sheet.close();
-      await runDigest(ctx, { channelIds: [...selected], periodHours: hours });
+      await runDigest(ctx, {
+        channelIds: [...selected],
+        periodHours: hours,
+        templateId,
+      });
     },
   });
 
@@ -587,12 +633,15 @@ export function openNewDigestSheet(ctx) {
       el("h3", { class: "small muted", text: "2. Период" }),
       periodChips,
       customInput,
+      el("h3", { class: "small muted", text: "3. Вёрстка" }),
+      templateChips,
       summary,
       runButton,
     ],
   });
 
   buildPeriodChips();
+  buildTemplateChips();
   updateSummary();
   sheet.open();
   return sheet;
@@ -602,9 +651,9 @@ export function openNewDigestSheet(ctx) {
  * Start a digest run and follow it, showing the real stages the workflow reports.
  *
  * @param {object} ctx
- * @param {{channelIds: number[], periodHours: number}} options
+ * @param {{channelIds: number[], periodHours: number, templateId?: number|null}} options
  */
-export async function runDigest(ctx, { channelIds, periodHours }) {
+export async function runDigest(ctx, { channelIds, periodHours, templateId = null }) {
   const bar = progressBar({ label: "Обычно это занимает около минуты." });
   const retrySlot = el("div", { class: "stack" });
   const progressSheet = createSheet({
@@ -621,6 +670,9 @@ export async function runDigest(ctx, { channelIds, periodHours }) {
       period_hours: String(periodHours ?? ""),
       dry_run: "false",
     };
+    if (templateId !== null && templateId !== undefined) {
+      inputs.template_id = String(templateId);
+    }
 
     const { runId, record, started } = await runWorkflow({
       client: ctx.client,
@@ -656,7 +708,7 @@ export async function runDigest(ctx, { channelIds, periodHours }) {
         block: true,
         onClick: () => {
           progressSheet.close();
-          runDigest(ctx, { channelIds, periodHours });
+          runDigest(ctx, { channelIds, periodHours, templateId });
         },
       }),
     );

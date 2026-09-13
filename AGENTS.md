@@ -29,6 +29,7 @@ frontend/
   assets/screen-digests.js  — список дайджестов, просмотр, «Спросить у ИИ»
   assets/screen-channels.js — чаты аккаунта с переключателями, стиль и период
   assets/screen-settings.js — настройки, статус, бюджет, статистика, вход в Telegram
+  assets/screen-styles.js   — стили и шаблоны вёрстки: список и редакторы
   assets/backend.js     — работа с бэкендом: секреты, логин, прогоны (одна реализация)
   assets/miniapp.js     — интеграция с Telegram Mini App (тема, отступы, ready)
   assets/state.js       — чтение ветки data и правила «что настроено» (чистые функции)

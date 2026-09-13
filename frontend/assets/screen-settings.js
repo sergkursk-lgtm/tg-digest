@@ -21,6 +21,7 @@ import {
 } from "./backend.js";
 import { clear, el, field, setStatus, statusLine } from "./dom.js";
 import { DEEPSEEK_SECRET, PATHS, formatDate, formatMoment, formatTokens, formatUsd, usageByDay, usageSummary } from "./state.js";
+import { templatesAccordion } from "./screen-styles.js";
 import {
   actionButton,
   button,
@@ -363,53 +364,6 @@ function appearanceSection(ctx, { onThemeChange, currentTheme }) {
   });
 }
 
-/** Presets and templates, collapsed: useful, but not part of the everyday loop. */
-function templatesAccordion(ctx) {
-  const presets = ctx.snapshot.presets ?? [];
-  const templates = ctx.snapshot.templates ?? [];
-
-  const body = el("div", { class: "accordion__body" }, [
-    el("h3", { class: "small muted", text: "Стили" }),
-    presets.length
-      ? el(
-          "ul",
-          { class: "list" },
-          presets.map((preset) =>
-            el("li", {}, [
-              listRow({
-                title: preset.name,
-                sub: preset.user_prompt_style || "без дополнительных указаний",
-                meta: preset.is_default ? "по умолчанию" : null,
-              }),
-            ]),
-          ),
-        )
-      : el("p", { class: "small muted", text: "Стили не заданы." }),
-    el("h3", { class: "small muted section", text: "Шаблоны вёрстки" }),
-    templates.length
-      ? el(
-          "ul",
-          { class: "list" },
-          templates.map((template) =>
-            el("li", {}, [
-              listRow({
-                title: template.name,
-                sub: `${template.grouping} · разделы: ${(template.sections ?? []).join(", ")}`,
-                meta: template.is_default ? "по умолчанию" : null,
-              }),
-            ]),
-          ),
-        )
-      : el("p", { class: "small muted", text: "Шаблонов нет — применяется стандартный." }),
-  ]);
-
-  return el("details", { class: "accordion" }, [
-    el("summary", { text: "Шаблоны и стили" }),
-    body,
-  ]);
-}
-
-/** This month's spending, collapsed. */
 function statisticsAccordion(ctx) {
   const summary = usageSummary(ctx.snapshot.usage, ctx.snapshot.settings);
   const days = usageByDay(ctx.snapshot.usage);
