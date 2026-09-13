@@ -2,11 +2,11 @@
 <html lang="ru">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>tg-digest</title>
     <meta name="description" content="Дайджесты из Telegram-каналов через DeepSeek" />
     <meta name="color-scheme" content="light dark" />
-    <link rel="stylesheet" href="./assets/theme.css" />
+    <link rel="stylesheet" href="./assets/design.css" />
     <script>
       // Resolve the theme before the first paint, so the page never flashes the wrong
       // colours. The stored value is the user's choice: "system" | "light" | "dark".
@@ -24,45 +24,35 @@
     </script>
   </head>
   <body>
-    <header class="topbar">
-      <div class="brand">
-        <span class="brand__mark" aria-hidden="true">tg</span>
-        <span class="brand__name">tg-digest</span>
-      </div>
-      <button id="theme-toggle" class="ghost-button" type="button">Тема: системная</button>
+    <!-- The header, the navigation and the cost strip all appear only once the app itself
+         does: on the PIN screen and during onboarding there is nothing to navigate to. -->
+    <header class="appbar" id="appbar" hidden>
+      <button
+        class="btn btn--quiet btn--round"
+        id="nav-back"
+        type="button"
+        aria-label="Назад"
+        hidden
+      ></button>
+      <h1 class="appbar__title" id="appbar-title">Дайджесты</h1>
+      <button class="btn btn--quiet btn--round" id="theme-toggle" type="button"></button>
     </header>
 
-    <main class="shell">
+    <main class="app" id="views">
       <noscript>
-        <section class="card">
-          <h1>Нужен JavaScript</h1>
-          <p class="lede">
-            Приложение целиком работает в браузере: оно обращается к GitHub API по вашему
-            токену. Без JavaScript интерфейс показать нечего.
-          </p>
+        <section class="screen screen--narrow">
+          <div class="card">
+            <h1>Нужен JavaScript</h1>
+            <p class="muted">
+              Приложение целиком работает в браузере: оно обращается к GitHub API по вашему
+              токену. Без JavaScript интерфейс показать нечего.
+            </p>
+          </div>
         </section>
       </noscript>
-
-      <!-- No token yet: introduce the project and ask for the GitHub token. -->
-      <section id="view-welcome" class="view" hidden></section>
-
-      <!-- Token stored: ask for the PIN that decrypts it. -->
-      <section id="view-lock" class="view" hidden></section>
-
-      <!-- The setup wizard. -->
-      <section id="view-wizard" class="view" hidden></section>
-
-      <!-- Everything configured. -->
-      <section id="view-app" class="view" hidden></section>
     </main>
 
-    <footer class="footer">
-      <span id="tariff" class="footer__tariff">определяем тариф…</span>
-      <span id="footer-tokens" class="footer__figure">Токенов: 0</span>
-      <span id="footer-cost" class="footer__figure">Стоимость: $0.0000</span>
-      <span id="footer-budget" class="footer__figure">Бюджет: $5.0000/мес</span>
-      <span class="footer__muted">модель: <span id="footer-model">deepseek-flash</span></span>
-    </footer>
+    <nav class="tabbar" id="tabbar" hidden aria-label="Разделы"></nav>
 
     <!-- Vendored UMD libraries: both must be classic scripts, so they land on window. -->
     <script src="./vendor/tweetnacl.js"></script>

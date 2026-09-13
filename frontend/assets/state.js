@@ -18,7 +18,26 @@ export const PATHS = {
   templates: "data/templates.json",
   digestIndex: "data/digests/index.json",
   setupRun: "data/runs/setup-check.json",
+  askRequest: "data/ask/request.json",
+  /** Full digest file, ``data/digests/<id>.json``. */
+  digest: (id) => `data/digests/${safeId(id, "digest")}.json`,
+  /** The answer to one question, ``data/ask/<id>.json``. */
+  askAnswer: (id) => `data/ask/${safeId(id, "ask")}.json`,
 };
+
+/**
+ * Reject an id that could escape its directory.
+ *
+ * Mirrors the check the backend makes in `config.digest_path`: ids always come from files
+ * the app wrote itself, but a path built from data is worth validating anyway.
+ */
+export function safeId(id, kind = "file") {
+  const value = String(id ?? "");
+  if (!value || value.includes("/") || value.includes("\\") || value.startsWith(".")) {
+    throw new Error(`недопустимый ${kind} id`);
+  }
+  return value;
+}
 
 /** Telegram secrets the app knows how to write. */
 export const TELEGRAM_SECRETS = ["TG_API_ID", "TG_API_HASH", "TG_PHONE", "TG_STRING_SESSION"];
@@ -37,7 +56,7 @@ async function readOrNull(client, path) {
  * @param {object} client the API client from api.js
  */
 export async function loadSnapshot(client, month = monthKey(new Date())) {
-  const [settings, login, channels, presets, templates, index, usage, setupRun] =
+  const [settings, login, channels, presets, templates, index, usage, setupRun, dialogs] =
     await Promise.all([
       readOrNull(client, PATHS.settings),
       readOrNull(client, PATHS.loginState),
@@ -47,6 +66,7 @@ export async function loadSnapshot(client, month = monthKey(new Date())) {
       readOrNull(client, PATHS.digestIndex),
       readOrNull(client, `data/usage/${month}.json`),
       readOrNull(client, PATHS.setupRun),
+      readOrNull(client, PATHS.dialogs),
     ]);
 
   return {
@@ -64,6 +84,9 @@ export async function loadSnapshot(client, month = monthKey(new Date())) {
     digestsSha: index.sha,
     usage: usage.data,
     setupRun: setupRun.data,
+    /** The account's chat directory, without message content. */
+    dialogs: dialogs.data?.items ?? [],
+    dialogsUpdatedAt: dialogs.data?.updated_at ?? null,
     month,
   };
 }
@@ -76,19 +99,43 @@ export function monthKey(date) {
 }
 
 /**
+ * Secret names as reported by the last setup check.
+ *
+ * A fine-grained PAT can hold Actions + Contents + Secrets *write* without Secrets *read*;
+ * the REST list endpoint then answers 500 and the page has no way to see which secrets
+ * exist. `setup.yml` runs with every secret in its environment, so its record is the
+ * reliable source — the list endpoint is only a bonus.
+ *
+ * @param {object|null} setupRun contents of data/runs/setup-check.json
+ * @returns {Set<string>}
+ */
+export function secretsFromSetupRun(setupRun) {
+  const found = new Set();
+  for (const step of setupRun?.steps ?? []) {
+    const match = /^secret ([A-Z0-9_]+)$/.exec(String(step?.name ?? ""));
+    if (match && step.status === "ok") {
+      found.add(match[1]);
+    }
+  }
+  return found;
+}
+
+/**
  * Work out which setup steps are still outstanding.
  *
  * Credentials may come from GitHub Secrets or from the data branch, so both sources are
- * consulted; the branch is what the wizard writes before it can reach Secrets.
+ * consulted; the branch is what the wizard writes before it can reach Secrets. A secret
+ * counts as present when either the REST list or the last setup check says so.
  *
  * @param {object} snapshot result of loadSnapshot
- * @param {string[]} secretNames names present in the repository
+ * @param {string[]} secretNames names the repository reports, when it can be listed
  * @returns {Array<{id: string, title: string, hint: string, done: boolean, hidden: boolean}>}
  */
 export function setupSteps(snapshot, secretNames = []) {
   const login = snapshot?.login ?? {};
   const telegram = snapshot?.settings?.values?.telegram ?? {};
-  const has = (name) => secretNames.includes(name);
+  const fromSetup = secretsFromSetupRun(snapshot?.setupRun);
+  const has = (name) => secretNames.includes(name) || fromSetup.has(name);
 
   const codeRequested = login.step === "code_sent";
   const sessionReady = login.step === "authorized" || has("TG_STRING_SESSION");
@@ -198,6 +245,9 @@ export function usageSummary(usageMonth, settings) {
 
   return {
     digests: Number(totals.digests ?? 0),
+    // Questions are billed like digests but are not digests; the backend counts them
+    // separately so the dashboard does not claim more digests than exist.
+    questions: Number(totals.questions ?? 0),
     tokensIn: Number(totals.tokens_in ?? 0),
     tokensOut: Number(totals.tokens_out ?? 0),
     cacheHitTokens: Number(totals.cache_hit_tokens ?? 0),
@@ -267,7 +317,14 @@ export function selectableDialogs(dialogs) {
   );
 }
 
-/** Format an ISO timestamp for a Russian reader, or a dash when absent. */
+/**
+ * Format an ISO timestamp for a Russian reader, or a dash when absent.
+ *
+ * Always UTC, never the browser's zone. Every timestamp the app shows is compared against
+ * something the backend wrote in UTC — the period inside the digest, the tariff clock, the
+ * run records — and rendering the list in local time made the same digest read "11:40" in
+ * the list and "08:40 UTC" once opened.
+ */
 export function formatMoment(value) {
   if (!value) {
     return "—";
@@ -281,10 +338,11 @@ export function formatMoment(value) {
     month: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "UTC",
   }).format(date);
 }
 
-/** Format just the date part, for the statistics table. */
+/** Format just the date part, for the statistics table. Days are UTC days too. */
 export function formatDate(value) {
   if (!value) {
     return "—";
@@ -293,7 +351,11 @@ export function formatDate(value) {
   if (Number.isNaN(date.getTime())) {
     return "—";
   }
-  return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit" }).format(date);
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "UTC",
+  }).format(date);
 }
 
 /**
@@ -316,12 +378,17 @@ export function usageByDay(usageMonth) {
     const bucket = buckets.get(day) ?? {
       date: day,
       digests: 0,
+      questions: 0,
       tokensIn: 0,
       tokensOut: 0,
       cacheHitTokens: 0,
       costUsd: 0,
     };
-    bucket.digests += 1;
+    if (String(item.digest_id ?? "").startsWith("ask:")) {
+      bucket.questions += 1;
+    } else {
+      bucket.digests += 1;
+    }
     bucket.tokensIn += Number(item.tokens_in ?? 0);
     bucket.tokensOut += Number(item.tokens_out ?? 0);
     bucket.cacheHitTokens += Number(item.cache_hit_tokens ?? 0);

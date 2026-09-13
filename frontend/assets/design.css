@@ -1,0 +1,1298 @@
+/* tg-digest design system.
+ *
+ * Light-first, because the Mini App usually inherits a light Telegram theme and the user
+ * asked for a light, minimal look. Dark is a first-class citizen, not an afterthought: the
+ * Telegram client and the OS both can demand it.
+ *
+ * Motion follows the published guidance rather than taste:
+ *   - press feedback lands within ~90ms, screen transitions 200-300ms, never above 700ms;
+ *   - ease-out for things that appear, ease-in for things that leave, spring only as an accent;
+ *   - only `transform` and `opacity` are animated, so nothing triggers layout or paint;
+ *   - `prefers-reduced-motion` keeps the information and drops the movement.
+ */
+
+/* -- tokens ----------------------------------------------------------------- */
+
+:root {
+  color-scheme: light;
+
+  /* surfaces */
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #eef0f4;
+  --border: #e3e6ec;
+  --border-strong: #d3d8e2;
+  /* Boundaries that are the *only* thing identifying a control: an input box, a switch track,
+   * an empty PIN dot. Kept at 3:1 against both surfaces (WCAG 1.4.11). */
+  --control-edge: #848b98;
+
+  /* text */
+  --text: #14161b;
+  --text-muted: #5f6672;
+
+  /* brand and states */
+  --accent: #2563eb;
+  --accent-hover: #1d4fd7;
+  --accent-ink: #ffffff;
+  --accent-soft: #e8efff;
+  --ok: #0b7a4b;
+  --ok-soft: #e6f5ee;
+  --warn: #9a5b06;
+  --warn-soft: #fdf1e0;
+  --danger: #c13515;
+  --danger-soft: #fdece8;
+
+  /* spacing scale */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+
+  /* radii */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 24px;
+  --r-full: 999px;
+
+  /* elevation: soft and low, the way a light minimal interface reads */
+  --shadow-1: 0 1px 2px rgb(16 24 40 / 5%), 0 1px 3px rgb(16 24 40 / 4%);
+  --shadow-2: 0 2px 8px rgb(16 24 40 / 6%), 0 12px 32px rgb(16 24 40 / 10%);
+
+  /* motion */
+  --dur-press: 90ms;
+  --dur-fast: 140ms;
+  --dur-base: 220ms;
+  --dur-slow: 320ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  /* the smallest comfortable target for a thumb */
+  --tap: 48px;
+
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0d0f13;
+  --surface: #16191f;
+  --surface-2: #1e222a;
+  --border: #2a2f39;
+  --border-strong: #3a4150;
+  --control-edge: #6b7484;
+
+  --text: #e9ebef;
+  --text-muted: #9ba3b0;
+
+  --accent: #6e9bff;
+  --accent-hover: #8bb0ff;
+  --accent-ink: #0b0d11;
+  --accent-soft: #1b2436;
+  --ok: #4ec48a;
+  --ok-soft: #14261e;
+  --warn: #e0a458;
+  --warn-soft: #2a2114;
+  --danger: #ff8a75;
+  --danger-soft: #2d1a17;
+
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 40%);
+  --shadow-2: 0 2px 8px rgb(0 0 0 / 45%), 0 12px 32px rgb(0 0 0 / 45%);
+}
+
+/* -- base ------------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+/* An author `display` beats the user agent's `[hidden] { display: none }`, so a flex or
+   grid container keeps rendering after `element.hidden = true` unless hiding is stated
+   here. The shell depends on this: the header, the tab bar and the cost strip are hidden
+   with the `hidden` attribute on the lock and onboarding screens. */
+[hidden] {
+  display: none !important;
+}
+
+/* Controls inherit type instead of the platform's 13px default. */
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* Buttons are all styled here, so the user agent's raised grey look is stripped. Without
+   this a row that only sets `border-bottom` keeps the other three borders and the
+   `buttonface` background — which is exactly how the channel list first rendered. */
+button {
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  text-align: inherit;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+body {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+h1 {
+  font-size: 26px;
+  font-weight: 700;
+}
+
+h2 {
+  font-size: 15px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--accent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* -- layout ----------------------------------------------------------------- */
+
+.app {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.appbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  padding-top: calc(var(--s3) + var(--tg-inset-top, 0px));
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: saturate(1.6) blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+
+.appbar__title {
+  flex: 1;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Header actions stay quiet: the accent belongs to the primary action on the screen. */
+.appbar .btn--quiet {
+  color: var(--text-muted);
+}
+
+.screen {
+  flex: 1;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--s4);
+  padding-bottom: var(--s5);
+}
+
+/* A screen with a floating action needs room for it above the navigation. */
+.screen--with-fab {
+  padding-bottom: calc(58px + 80px + var(--tg-inset-bottom, 0px));
+}
+
+.screen--narrow {
+  max-width: 420px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.stack--loose {
+  gap: var(--s5);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.row--between {
+  justify-content: space-between;
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* -- buttons ---------------------------------------------------------------- */
+
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  min-height: var(--tap);
+  padding: 0 var(--s4);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  /* Press feedback first: it must land inside the ~100ms the eye needs to trust a tap. */
+  transition:
+    transform var(--dur-press) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out);
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.btn--primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: var(--shadow-1);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+/* Pressing a raised button should feel like pushing it down, not like shaking it. */
+.btn--primary:active:not(:disabled) {
+  box-shadow: none;
+}
+
+.btn--ghost {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.btn--ghost:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.btn--quiet {
+  min-height: 40px;
+  background: none;
+  border: none;
+  color: var(--accent);
+  padding: 0 var(--s2);
+}
+
+.btn--danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.btn--block {
+  width: 100%;
+}
+
+.btn--round {
+  width: var(--tap);
+  min-width: var(--tap);
+  padding: 0;
+  border-radius: var(--r-full);
+}
+
+.btn__icon {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+}
+
+/* A floating action: the one loud element on the digest list. */
+.fab {
+  position: fixed;
+  right: var(--s4);
+  /* Clears the bottom navigation, which is 58px tall. */
+  bottom: calc(58px + var(--s4) + var(--tg-inset-bottom, 0px));
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 52px;
+  padding: 0 var(--s5);
+  border: none;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: inherit;
+  font-weight: 600;
+  box-shadow: var(--shadow-2);
+  cursor: pointer;
+  transition:
+    transform var(--dur-press) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.fab:active {
+  transform: scale(0.96);
+  box-shadow: var(--shadow-1);
+}
+
+/* -- cards and rows --------------------------------------------------------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--s4);
+  box-shadow: var(--shadow-1);
+}
+
+.card--flush {
+  padding: 0;
+  overflow: hidden;
+}
+
+.card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-bottom: var(--s3);
+}
+
+.card__title {
+  flex: 1;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-height: var(--tap);
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  background: none;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.list__row:last-child {
+  border-bottom: none;
+}
+
+.list__row:active {
+  background: var(--surface-2);
+}
+
+.list__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.list__title {
+  display: block;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The subtitle wraps instead of truncating: it carries the period a digest covers, and a
+   cut-off end time is worse than a second line. The title keeps its ellipsis. */
+.list__sub {
+  display: block;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.list__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.chev {
+  color: var(--text-muted);
+  flex: none;
+}
+
+/* -- fields ----------------------------------------------------------------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.field__label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.field__hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.input {
+  width: 100%;
+  min-height: var(--tap);
+  padding: var(--s3);
+  border: 1px solid var(--control-edge);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.input--area {
+  min-height: 92px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.checkline {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-height: 40px;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.checkbox {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--accent);
+  flex: none;
+}
+
+/* A row whose whole surface toggles something: used by the channel picker. */
+.switchrow {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  /* A <button> shrink-wraps to its content even as a flex container, so the width has to
+     be stated or the rows end up ragged inside the card. */
+  width: 100%;
+  text-align: left;
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.switchrow:last-child {
+  border-bottom: none;
+}
+
+.switchrow:active {
+  background: var(--surface-2);
+}
+
+.switchrow__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.switchrow__title {
+  display: block;
+  font-weight: 600;
+}
+
+.switchrow__sub {
+  display: block;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.switch {
+  flex: none;
+  width: 46px;
+  height: 28px;
+  border: 1px solid var(--control-edge);
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  position: relative;
+  transition:
+    background-color var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out);
+}
+
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--shadow-1);
+  transition: transform var(--dur-base) var(--ease-spring);
+}
+
+.switch--on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.switch--on::after {
+  transform: translateX(16px);
+}
+
+/* -- chips ------------------------------------------------------------------ */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.chip {
+  min-height: 40px;
+  padding: 0 var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    transform var(--dur-press) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.chip:active {
+  transform: scale(0.96);
+}
+
+.chip--on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* -- tab bar ---------------------------------------------------------------- */
+
+.tabbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: saturate(1.6) blur(12px);
+  border-top: 1px solid var(--border);
+  padding-bottom: var(--tg-inset-bottom, 0px);
+}
+
+.tabbar__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 58px;
+  padding: var(--s2) 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-press) var(--ease-out);
+}
+
+.tabbar__item:active {
+  transform: scale(0.94);
+}
+
+.tabbar__item--active {
+  color: var(--accent);
+}
+
+/* -- numpad (PIN) ----------------------------------------------------------- */
+
+.lock {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--s6);
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  padding: var(--s5) var(--s4);
+  padding-bottom: calc(var(--s6) + var(--tg-inset-bottom, 0px));
+}
+
+.lock__brand {
+  text-align: center;
+}
+
+.lock__mark {
+  display: inline-grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: var(--s3);
+  border-radius: var(--r-lg);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 22px;
+  font-weight: 700;
+  box-shadow: var(--shadow-1);
+}
+
+.lock__dots {
+  display: flex;
+  justify-content: center;
+  gap: var(--s4);
+  margin: var(--s5) 0 var(--s2);
+}
+
+.dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--control-edge);
+  transition:
+    transform var(--dur-fast) var(--ease-spring),
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.dot--filled {
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: scale(1.12);
+}
+
+.dot--error {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.lock--shake .lock__dots {
+  animation: shake var(--dur-slow) var(--ease-out);
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-9px); }
+  40% { transform: translateX(7px); }
+  60% { transform: translateX(-5px); }
+  80% { transform: translateX(3px); }
+}
+
+.numpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--s3);
+}
+
+.numpad__key {
+  min-height: 64px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 24px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow-1);
+  transition:
+    transform var(--dur-press) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.numpad__key:active {
+  transform: scale(0.96);
+  background: var(--surface-2);
+  box-shadow: none;
+}
+
+.numpad__key--muted {
+  color: var(--text-muted);
+  font-size: 18px;
+}
+
+/* -- sheet ------------------------------------------------------------------ */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgb(12 16 24 / 38%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+
+.scrim--open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 21;
+  max-height: 88dvh;
+  overflow-y: auto;
+  padding: var(--s4);
+  padding-bottom: calc(var(--s5) + var(--tg-inset-bottom, 0px));
+  background: var(--surface);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  box-shadow: var(--shadow-2);
+  transform: translateY(102%);
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+.sheet--open {
+  transform: translateY(0);
+}
+
+.sheet__grip {
+  width: 40px;
+  height: 4px;
+  margin: 0 auto var(--s4);
+  border-radius: var(--r-full);
+  background: var(--border-strong);
+}
+
+.sheet__title {
+  margin-bottom: var(--s4);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* -- feedback --------------------------------------------------------------- */
+
+.status {
+  font-size: 14px;
+  margin-top: var(--s3);
+}
+
+.status--info { color: var(--text-muted); }
+.status--ok { color: var(--ok); }
+.status--warn { color: var(--warn); }
+.status--error { color: var(--danger); }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: 2px var(--s2);
+  border-radius: var(--r-full);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badge--ok { background: var(--ok-soft); color: var(--ok); }
+.badge--warn { background: var(--warn-soft); color: var(--warn); }
+.badge--quiet { background: var(--surface-2); color: var(--text-muted); }
+
+.skeleton {
+  border-radius: var(--r-sm);
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface) 37%, var(--surface-2) 63%);
+  background-size: 400% 100%;
+  animation: skeleton 1.4s var(--ease-out) infinite;
+}
+
+@keyframes skeleton {
+  from { background-position: 100% 0; }
+  to { background-position: 0 0; }
+}
+
+.skeleton--row {
+  height: 56px;
+  margin-bottom: var(--s2);
+}
+
+.empty {
+  padding: var(--s6) var(--s4);
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.empty__title {
+  margin-bottom: var(--s2);
+  font-size: 17px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+/* Toasts sit above the bottom navigation and never block it. */
+.toast-host {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(76px + var(--tg-inset-bottom, 0px));
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s2);
+  pointer-events: none;
+}
+
+.toast {
+  max-width: min(92vw, 460px);
+  padding: var(--s3) var(--s4);
+  border-radius: var(--r-md);
+  background: var(--text);
+  color: var(--bg);
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: var(--shadow-2);
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out);
+}
+
+.toast--in {
+  opacity: 1;
+  transform: none;
+}
+
+.toast--ok { background: var(--ok); color: var(--accent-ink); }
+.toast--error { background: var(--danger); color: var(--accent-ink); }
+
+/* Progress through the four stages of a digest run. */
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  font-size: 15px;
+}
+
+.step__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--border-strong);
+  flex: none;
+  transition: background-color var(--dur-base) var(--ease-out);
+}
+
+.step__dot--running {
+  background: var(--accent);
+  animation: pulse 1.2s var(--ease-out) infinite;
+}
+
+.step__dot--ok { background: var(--ok); }
+.step__dot--failed { background: var(--danger); }
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.35); opacity: 0.6; }
+}
+
+/* -- digest content --------------------------------------------------------- */
+
+.digest {
+  overflow-wrap: anywhere;
+}
+
+.digest h1,
+.digest h2,
+.digest h3 {
+  margin: var(--s5) 0 var(--s2);
+  text-transform: none;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.digest h1 { font-size: 21px; }
+.digest h2 { font-size: 17px; font-weight: 650; }
+.digest h3 { font-size: 15px; font-weight: 650; }
+
+.digest p { margin: var(--s2) 0; }
+
+.digest ul,
+.digest ol {
+  margin: var(--s2) 0;
+  padding-left: var(--s5);
+}
+
+.digest li { margin: var(--s1) 0; }
+
+.digest pre {
+  padding: var(--s3);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  overflow-x: auto;
+}
+
+.digest code {
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.digest blockquote {
+  margin: var(--s2) 0;
+  padding-left: var(--s3);
+  border-left: 3px solid var(--border);
+  color: var(--text-muted);
+}
+
+/* -- questions under a digest ----------------------------------------------- */
+
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.bubble {
+  max-width: 92%;
+  padding: var(--s3) var(--s4);
+  border-radius: var(--r-lg);
+  font-size: 15px;
+  animation: bubble-in var(--dur-base) var(--ease-out);
+}
+
+@keyframes bubble-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.bubble--mine {
+  align-self: flex-end;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-bottom-right-radius: var(--r-sm);
+}
+
+.bubble--theirs {
+  align-self: flex-start;
+  background: var(--surface-2);
+  color: var(--text);
+  border-bottom-left-radius: var(--r-sm);
+}
+
+.ask {
+  display: flex;
+  gap: var(--s2);
+  align-items: flex-end;
+}
+
+.bubble-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  align-self: flex-start;
+  max-width: 92%;
+}
+
+.bubble-group .bubble {
+  max-width: 100%;
+}
+
+.refs {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s1);
+}
+
+.ref {
+  font-size: 13px;
+  color: var(--accent);
+  text-decoration: none;
+  padding: var(--s1) var(--s2);
+  border-radius: var(--r-sm);
+  background: var(--accent-soft);
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.ref:active {
+  background: var(--surface-2);
+}
+
+.ask .input {
+  flex: 1;
+}
+
+/* -- tables ----------------------------------------------------------------- */
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th,
+.table td {
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.table th:first-child,
+.table td:first-child {
+  text-align: left;
+}
+
+.table thead th {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.table tfoot th {
+  border-top: 2px solid var(--border);
+  border-bottom: none;
+}
+
+/* -- accordion -------------------------------------------------------------- */
+
+/* Native <details>: the collapsed sections in settings need no JavaScript at all. */
+.accordion {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+
+.accordion + .accordion {
+  margin-top: var(--s2);
+}
+
+.accordion > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: var(--tap);
+  padding: var(--s3) var(--s4);
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.accordion > summary::-webkit-details-marker {
+  display: none;
+}
+
+.accordion > summary:active {
+  background: var(--surface-2);
+}
+
+.accordion > summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
+  transform: rotate(45deg);
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+.accordion[open] > summary::after {
+  transform: rotate(-135deg);
+}
+
+.accordion__body {
+  padding: 0 var(--s4) var(--s4);
+  border-top: 1px solid var(--border);
+}
+
+/* -- key/value rows --------------------------------------------------------- */
+
+.kv {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s2) 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.kv:last-child {
+  border-bottom: none;
+}
+
+.kv__k {
+  color: var(--text-muted);
+}
+
+.kv__v {
+  font-weight: 600;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.kv__v--ok { color: var(--ok); }
+.kv__v--warn { color: var(--warn); }
+.kv__v--error { color: var(--danger); }
+
+/* Budget meter: a bar that never animates its width, so it cannot jank. */
+.meter {
+  height: 8px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.meter__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transform-origin: left center;
+  transition: transform var(--dur-slow) var(--ease-out);
+}
+
+.meter__fill--warn { background: var(--warn); }
+.meter__fill--blocked { background: var(--danger); }
+
+/* -- misc ------------------------------------------------------------------- */
+
+.muted { color: var(--text-muted); }
+.small { font-size: 13px; }
+.mono { font-family: var(--mono); }
+
+.section {
+  margin-top: var(--s5);
+}
+
+/* A compact spend line, shown at the top of the digest list. */
+.spend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2) var(--s3);
+  font-size: 13px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.spend__figure[data-status="warn"] { color: var(--warn); }
+.spend__figure[data-status="blocked"] { color: var(--danger); font-weight: 600; }

@@ -20,27 +20,38 @@
 
 ```
 frontend/
-  index.html          — единственная страница и контейнеры экранов
-  assets/theme.css    — токены тем и вёрстка
-  assets/app.js       — точка входа: PIN-гейт, роутинг, дашборд, подвал
-  assets/wizard.js    — мастер первого запуска
-  assets/miniapp.js   — интеграция с Telegram Mini App (тема, отступы, ready)
-  assets/telegram.js  — отправка в бота из браузера (зеркало backend/notifier.py)
-  assets/state.js     — чтение ветки data и правила «что настроено» (чистые функции)
-  assets/api.js       — клиент GitHub API (Contents, Actions, Secrets)
-  assets/bytes.js     — base64 и UTF-8 для браузера и Node
-  assets/crypto.js    — PIN → PBKDF2 → AES-GCM для хранения токена
-  assets/seal.js      — libsodium sealed box поверх tweetnacl
-  assets/blake2b.js   — BLAKE2b с настраиваемой длиной (нужен для nonce)
-  assets/sanitize.js  — белый список HTML для дайджеста
-  assets/dom.js       — безопасный DOM: никаких innerHTML для внешних данных
-  assets/local.js     — localStorage: репозиторий и зашифрованный токен
-  assets/tariff.js    — peak/off-peak (зеркало backend/pricing.py)
-  vendor/             — вендорные библиотеки, см. vendor/README.md
-tests/                — тесты на Node, вне frontend/, чтобы не публиковаться
-tools/                — ручные проверки на живом репозитории
+  index.html            — оболочка: шапка, контейнер экранов, нижняя навигация
+  assets/design.css     — токены и компоненты (единственный стилевой файл)
+  assets/app.js         — точка входа: тема, роутер, PIN-гейт, вкладки
+  assets/lock.js        — экран PIN с собственной клавиатурой
+  assets/onboarding.js  — первый запуск: токен + PIN, затем список того, что осталось
+  assets/ui.js          — примитивы: иконки, кнопки, шторка, тост, строки, скелетоны
+  assets/screen-digests.js  — список дайджестов, просмотр, «Спросить у ИИ»
+  assets/screen-channels.js — чаты аккаунта с переключателями, стиль и период
+  assets/screen-settings.js — настройки, статус, бюджет, статистика, вход в Telegram
+  assets/backend.js     — работа с бэкендом: секреты, логин, прогоны (одна реализация)
+  assets/miniapp.js     — интеграция с Telegram Mini App (тема, отступы, ready)
+  assets/telegram.js    — отправка в бота из браузера (зеркало backend/notifier.py)
+  assets/state.js       — чтение ветки data и правила «что настроено» (чистые функции)
+  assets/api.js         — клиент GitHub API (Contents, Actions, Secrets)
+  assets/bytes.js       — base64 и UTF-8 для браузера и Node
+  assets/crypto.js      — PIN → PBKDF2 → AES-GCM для хранения токена
+  assets/seal.js        — libsodium sealed box поверх tweetnacl
+  assets/blake2b.js     — BLAKE2b с настраиваемой длиной (нужен для nonce)
+  assets/sanitize.js    — белый список HTML для дайджеста
+  assets/dom.js         — безопасный DOM: никаких innerHTML для внешних данных
+  assets/local.js       — localStorage: репозиторий и зашифрованный токен
+  assets/tariff.js      — peak/off-peak (зеркало backend/pricing.py)
+  vendor/               — вендорные библиотеки, см. vendor/README.md
+tests/                  — тесты на Node, вне frontend/, чтобы не публиковаться
+  helpers/fake-dom.mjs  — минимальная DOM-заглушка для тестов примитивов
+tools/                  — ручные проверки на живом репозитории
 .github/workflows/pages.yml — тесты + публикация на Pages
 ```
+
+Экран — это функция, возвращающая `{ title, node, back?, chrome?, floating? }`; роутер в
+`app.js` рисует его и решает, показывать ли шапку, вкладки и кнопку «Назад». Экраны не
+обращаются к DOM страницы напрямую и не хранят состояние между вызовами.
 
 ## Правила
 

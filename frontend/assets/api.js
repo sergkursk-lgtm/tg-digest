@@ -28,7 +28,13 @@ export const API_ROOT = "https://api.github.com";
 export const DATA_BRANCH = "data";
 
 const API_VERSION = "2022-11-28";
-const WRITE_ATTEMPTS = 3;
+const WRITE_ATTEMPTS = 4;
+
+/** Statuses worth trying again: a lost race (409/422) or a transient server fault. */
+const RETRYABLE_STATUSES = new Set([409, 422, 500, 502, 503, 504]);
+
+/** How long to wait before the next write attempt, in milliseconds. */
+const WRITE_BACKOFF_MS = [0, 250, 750, 1500];
 
 /** Raised for any non-success response, with the status kept for branching. */
 export class GitHubError extends Error {
@@ -229,9 +235,13 @@ export function createGitHub({
     /**
      * Create or replace a JSON file in the data branch.
      *
-     * When the write loses a race (409/422), the current sha is read again and the write
-     * is retried. The runner writes the same files this does, so it is not a rare case: a
+     * When the write loses a race (409/422) the current sha is read again and the write is
+     * retried. The runner writes the same files this does, so it is not a rare case: a
      * login step is written by the browser and updated by the workflow seconds later.
+     *
+     * GitHub also answers 500 for a lost race, which is how writing `data/ask/request.json`
+     * failed while the digest workflow was committing: the same request succeeded on the
+     * next attempt. A server fault is therefore retried too, with a short backoff.
      *
      * @returns {Promise<string>} the new commit sha
      */
@@ -240,6 +250,9 @@ export function createGitHub({
       let lastError = null;
 
       for (let attempt = 0; attempt < WRITE_ATTEMPTS; attempt += 1) {
+        if (attempt > 0) {
+          await new Promise((resolve) => setTimeout(resolve, WRITE_BACKOFF_MS[attempt] ?? 1500));
+        }
         const body = {
           message,
           content: toBase64(utf8Encode(JSON.stringify(payload, null, 2) + "\n")),
@@ -262,7 +275,8 @@ export function createGitHub({
           return response.content?.sha ?? "";
         } catch (error) {
           lastError = error;
-          if ((error.status === 409 || error.status === 422) && attempt < WRITE_ATTEMPTS - 1) {
+          if (RETRYABLE_STATUSES.has(error.status) && attempt < WRITE_ATTEMPTS - 1) {
+            // A fresh sha, because the failure may have been someone else's commit.
             const current = await readJson(path);
             currentSha = current?.sha ?? null;
             continue;

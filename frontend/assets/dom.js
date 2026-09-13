@@ -55,26 +55,50 @@ export function clear(node) {
   node.replaceChildren();
 }
 
+/** Counter for fields that did not bring their own id. */
+let fieldCounter = 0;
+
+/**
+ * Wrap a control in a label, a control and an optional hint.
+ *
+ * The label is a separate element pointing at the control with `for`, and the hint is
+ * referenced by `aria-describedby`. Wrapping everything in one `<label>` — which is the
+ * obvious way to write it — folds the hint text into the control's accessible name, so a
+ * screen reader announces "Новый ключ DeepSeek platform.deepseek.com, edit text".
+ *
+ * @returns {{wrapper: HTMLElement, input: HTMLElement}}
+ */
+function labelled(options, buildInput) {
+  const id = options.id ?? `field-${(fieldCounter += 1)}`;
+  const hintId = `${id}-hint`;
+  const input = buildInput(id, options.hint ? hintId : null);
+  const wrapper = el("div", { class: "field" }, [
+    el("label", { class: "field__label", for: id, text: options.label }),
+    input,
+    options.hint ? el("span", { class: "field__hint", id: hintId, text: options.hint }) : null,
+  ]);
+  return { wrapper, input };
+}
+
 /**
  * Build a labelled multi-line text field.
  * @param {object} options same shape as {@link field}, plus `rows`
  * @returns {{field: HTMLElement, input: HTMLTextAreaElement}}
  */
 export function textareaField(options) {
-  const input = el("textarea", {
-    id: options.id,
-    class: "input input--area",
-    rows: options.rows ?? 5,
-    placeholder: options.placeholder ?? "",
-    spellcheck: "false",
-    maxlength: options.maxlength,
+  const { wrapper, input } = labelled(options, (id, describedBy) => {
+    const node = el("textarea", {
+      id,
+      class: "input input--area",
+      rows: options.rows ?? 5,
+      placeholder: options.placeholder ?? "",
+      spellcheck: "false",
+      maxlength: options.maxlength,
+      "aria-describedby": describedBy,
+    });
+    node.value = options.value ?? "";
+    return node;
   });
-  input.value = options.value ?? "";
-  const wrapper = el("label", { class: "field" }, [
-    el("span", { class: "field__label", text: options.label }),
-    input,
-    options.hint ? el("span", { class: "field__hint", text: options.hint }) : null,
-  ]);
   return { field: wrapper, input };
 }
 
@@ -88,19 +112,20 @@ export function textareaField(options) {
  * @returns {{field: HTMLElement, input: HTMLSelectElement}}
  */
 export function selectField(options) {
-  const input = el(
-    "select",
-    { id: options.id, class: "input" },
-    options.options.map((entry) =>
-      el("option", { value: entry.value, text: entry.label, selected: entry.value === options.value }),
+  const { wrapper, input } = labelled(options, (id, describedBy) =>
+    el(
+      "select",
+      { id, class: "input", "aria-describedby": describedBy },
+      options.options.map((entry) =>
+        el("option", {
+          value: entry.value,
+          text: entry.label,
+          selected: entry.value === options.value,
+        }),
+      ),
     ),
   );
   input.value = options.value ?? options.options[0]?.value ?? "";
-  const wrapper = el("label", { class: "field" }, [
-    el("span", { class: "field__label", text: options.label }),
-    input,
-    options.hint ? el("span", { class: "field__hint", text: options.hint }) : null,
-  ]);
   return { field: wrapper, input };
 }
 
@@ -146,22 +171,20 @@ export function showOnly(nodes, active) {
  * @returns {{field: HTMLElement, input: HTMLInputElement}}
  */
 export function field(options) {
-  const input = el("input", {
-    id: options.id,
-    class: "input",
-    type: options.type ?? "text",
-    value: options.value ?? "",
-    placeholder: options.placeholder ?? "",
-    autocomplete: options.autocomplete ?? "off",
-    spellcheck: "false",
-    maxlength: options.maxlength,
-    required: options.required,
-  });
-  const wrapper = el("label", { class: "field" }, [
-    el("span", { class: "field__label", text: options.label }),
-    input,
-    options.hint ? el("span", { class: "field__hint", text: options.hint }) : null,
-  ]);
+  const { wrapper, input } = labelled(options, (id, describedBy) =>
+    el("input", {
+      id,
+      class: "input",
+      type: options.type ?? "text",
+      value: options.value ?? "",
+      placeholder: options.placeholder ?? "",
+      autocomplete: options.autocomplete ?? "off",
+      spellcheck: "false",
+      maxlength: options.maxlength,
+      required: options.required,
+      "aria-describedby": describedBy,
+    }),
+  );
   return { field: wrapper, input };
 }
 

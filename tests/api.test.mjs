@@ -32,6 +32,9 @@ function createFakeGitHub(options = {}) {
     calls: [],
     shaCounter: 0,
     conflictNextWrites: 0,
+    failWrites: options.failWrites ?? 0,
+    rejectWrites: options.rejectWrites ?? false,
+    requests: [],
     secretPlaintext: new Map(),
     keyPair,
     permissionDenied: options.permissionDenied ?? null,
@@ -53,6 +56,7 @@ function createFakeGitHub(options = {}) {
     const method = init.method ?? "GET";
     const body = init.body ? JSON.parse(init.body) : null;
     state.calls.push({ url, method, body, cache: init.cache });
+    state.requests.push({ url, method });
 
     // Reads carry a cache-busting parameter; route on the path only.
     const path = url.split("?")[0];
@@ -113,6 +117,14 @@ function createFakeGitHub(options = {}) {
         return json({ sha: file.sha, content: toBase64(new TextEncoder().encode(file.content)) });
       }
       if (method === "PUT") {
+        if (state.rejectWrites) {
+          return json({ message: "forbidden" }, 403);
+        }
+        if (state.failWrites > 0) {
+          // GitHub really does answer 500 for a lost race on the Contents API.
+          state.failWrites -= 1;
+          return json({ message: "Server Error" }, 500);
+        }
         if (state.conflictNextWrites > 0) {
           state.conflictNextWrites -= 1;
           return json({ message: "sha mismatch" }, 409);
@@ -430,4 +442,39 @@ test("writes are not affected by the cache-busting parameter", async () => {
   const put = fake.state.calls.find((call) => call.method === "PUT");
   assert.ok(!put.url.includes("_="));
   assert.equal(put.body.branch, "data");
+});
+
+// -- write retries ------------------------------------------------------------
+
+test("a write that hits a transient server fault is retried", async () => {
+  // GitHub answered 500 for a Contents PUT while the digest workflow was committing the
+  // same branch. The same request went through a moment later, so a 5xx is retried like a
+  // lost race — otherwise the page reports a failure that never happened.
+  const fake = createFakeGitHub({ failWrites: 1 });
+  const sha = await clientFor(fake).writeJson("data/ask/request.json", { ask_id: "q1" }, "msg");
+  assert.ok(sha);
+  assert.equal(
+    fake.state.requests.filter((request) => request.method === "PUT").length,
+    2,
+    "the write should have been attempted twice",
+  );
+});
+
+test("a write that keeps failing gives up with a readable error", async () => {
+  const fake = createFakeGitHub({ failWrites: 99 });
+  await assert.rejects(
+    () => clientFor(fake).writeJson("data/ask/request.json", { ask_id: "q1" }, "msg"),
+    (error) => {
+      assert.ok(error instanceof GitHubError);
+      assert.match(error.message, /запись data\/ask\/request\.json/);
+      return true;
+    },
+  );
+});
+
+test("a client error is not retried", async () => {
+  // A 403 means the token is wrong: retrying it four times only delays the bad news.
+  const fake = createFakeGitHub({ rejectWrites: true });
+  await assert.rejects(() => clientFor(fake).writeJson("data/x.json", { a: 1 }, "msg"));
+  assert.equal(fake.state.requests.filter((request) => request.method === "PUT").length, 1);
 });

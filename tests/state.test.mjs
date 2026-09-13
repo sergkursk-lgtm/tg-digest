@@ -18,6 +18,7 @@ import {
   formatUsd,
   isNewerThan,
   isSetupComplete,
+  secretsFromSetupRun,
   monthKey,
   optionalSteps,
   nextStepId,
@@ -350,4 +351,87 @@ test("only chats worth summarising are offered", () => {
 test("selectableDialogs tolerates nothing at all", () => {
   assert.deepEqual(selectableDialogs(null), []);
   assert.deepEqual(selectableDialogs([]), []);
+});
+
+// -- secrets the page cannot list ---------------------------------------------
+
+test("a setup-check record tells the page which secrets exist", () => {
+  const record = {
+    steps: [
+      { name: "secret DEEPSEEK_API_KEY", status: "ok", detail: "set, 35 chars" },
+      { name: "secret TG_STRING_SESSION", status: "ok", detail: "set, 353 chars" },
+      { name: "secret TG_PHONE", status: "fail", detail: "missing" },
+      { name: "storage: write access", status: "ok", detail: "written" },
+    ],
+  };
+  const found = secretsFromSetupRun(record);
+  assert.ok(found.has("DEEPSEEK_API_KEY"));
+  assert.ok(found.has("TG_STRING_SESSION"));
+  assert.equal(found.has("TG_PHONE"), false);
+  assert.deepEqual([...secretsFromSetupRun(null)], []);
+});
+
+test("a token without Secrets: read does not make configured steps look missing", () => {
+  // This is the live situation: the PAT can write secrets but the list endpoint answers
+  // 500, so `secretNames` is empty. The setup check ran with the secrets in its
+  // environment, and its record must be what the checklist trusts.
+  const checked = snapshot({
+    login: { step: "authorized", phone: "+70000000000" },
+    setupRun: {
+      status: "ok",
+      steps: [
+        { name: "secret DEEPSEEK_API_KEY", status: "ok" },
+        { name: "secret TG_STRING_SESSION", status: "ok" },
+      ],
+    },
+    channels: [{ id: 1, title: "Клуб" }],
+  });
+  const steps = setupSteps(checked, []);
+  assert.equal(step(steps, "deepseek").done, true);
+  assert.equal(step(steps, "telegram-app").done, true);
+  // Nothing is left blocking, so the app opens instead of nagging.
+  assert.deepEqual(pendingSteps(steps), []);
+
+  // Without that record the same snapshot honestly reports the credentials as unknown.
+  const unchecked = setupSteps(snapshot({ login: { step: "authorized" } }), []);
+  assert.equal(step(unchecked, "deepseek").done, false);
+});
+
+// -- timestamps ---------------------------------------------------------------
+
+test("timestamps are formatted in UTC, wherever the reader is", () => {
+  // The backend writes UTC everywhere (digest periods, run records, the tariff clock), so
+  // the UI must not render the same moment differently depending on the browser's zone.
+  assert.equal(formatMoment("2026-09-13T08:40:41+00:00"), "13.09, 08:40");
+  assert.equal(formatDate("2026-09-13T08:40:41+00:00"), "13.09");
+  assert.equal(formatMoment("2026-09-13T23:30:00+00:00"), "13.09, 23:30");
+  assert.equal(formatMoment(null), "—");
+  assert.equal(formatMoment("не дата"), "—");
+});
+
+test("a question is not counted as a digest", () => {
+  // The backend bills both, and counts them apart: the dashboard must not claim more
+  // digests than exist because a question was asked.
+  const usage = {
+    totals: { digests: 2, questions: 1, tokens_in: 300, tokens_out: 100, cost_usd: 0.004 },
+    items: [
+      { digest_id: "20260913T084041Z-c1", created_at: "2026-09-13T08:40:41+00:00", tokens_in: 100, tokens_out: 50, cost_usd: 0.002 },
+      { digest_id: "ask:20260913T095414Z-q1k7n", created_at: "2026-09-13T09:54:14+00:00", tokens_in: 100, tokens_out: 20, cost_usd: 0.001 },
+    ],
+  };
+  const summary = usageSummary(usage, { values: { budget: { monthly_usd: 5 } } });
+  assert.equal(summary.digests, 2);
+  assert.equal(summary.questions, 1);
+
+  const [day] = usageByDay(usage);
+  assert.equal(day.digests, 1);
+  assert.equal(day.questions, 1);
+  assert.equal(day.costUsd, 0.003);
+});
+
+test("a month written before questions existed still reads", () => {
+  // Older usage files have no `questions` field at all.
+  const summary = usageSummary({ totals: { digests: 1, cost_usd: 0.001 } }, null);
+  assert.equal(summary.questions, 0);
+  assert.equal(summary.digests, 1);
 });

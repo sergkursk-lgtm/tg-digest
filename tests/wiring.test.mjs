@@ -1,19 +1,47 @@
 /**
- * Tests for the wizard's pure helpers and for the wiring of the whole page.
+ * Tests for the shared helpers and for the wiring of the whole page.
  *
- * The wiring tests matter more than they look: there is no bundler and no build step, so
- * a typo in an import list or in a `getElementById` would produce a blank page with the
- * error only visible in the browser console.
+ * The wiring tests matter more than they look: there is no bundler and no build step, so a
+ * typo in an import list or in a `getElementById` produces a blank page with the error
+ * visible only in the browser console.
  */
 
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-import { buildChannel, mergeTelegramSettings } from "../frontend/assets/wizard.js";
+import {
+  buildChannel,
+  mergeBudgetSettings,
+  mergeTelegramSettings,
+} from "../frontend/assets/backend.js";
+import { describeStep } from "../frontend/assets/screen-digests.js";
+import { periodLabelFor } from "../frontend/assets/screen-channels.js";
+import { channelCount, plural } from "../frontend/assets/ui.js";
 
 const ROOT = new URL("../", import.meta.url);
-const ASSETS = ["api.js", "app.js", "blake2b.js", "bytes.js", "crypto.js", "dom.js", "local.js", "miniapp.js", "sanitize.js", "screens.js", "seal.js", "state.js", "tariff.js", "telegram.js", "wizard.js"];
+const ASSETS = [
+  "api.js",
+  "app.js",
+  "backend.js",
+  "blake2b.js",
+  "bytes.js",
+  "crypto.js",
+  "dom.js",
+  "local.js",
+  "lock.js",
+  "miniapp.js",
+  "onboarding.js",
+  "sanitize.js",
+  "screen-channels.js",
+  "screen-digests.js",
+  "screen-settings.js",
+  "seal.js",
+  "state.js",
+  "tariff.js",
+  "telegram.js",
+  "ui.js",
+];
 
 /** Read a frontend asset as text. */
 async function readAsset(name) {
@@ -37,7 +65,7 @@ function parseImports(source) {
   return imports;
 }
 
-// -- wizard helpers -----------------------------------------------------------
+// -- settings merging ---------------------------------------------------------
 
 test("mergeTelegramSettings keeps every other setting", () => {
   const settings = {
@@ -66,13 +94,41 @@ test("mergeTelegramSettings works with no existing settings file", () => {
   assert.equal(merged.schema, 1);
 });
 
+test("budget and limit edits leave the other settings alone", () => {
+  const settings = {
+    schema: 1,
+    values: {
+      budget: { monthly_usd: 5, warn_ratio: 0.8 },
+      telegram: { bot_token: "1:a", max_digests_per_day: 50, max_requests_per_hour: 10 },
+    },
+  };
+  const budget = mergeBudgetSettings(settings, { monthly_usd: 12 });
+  assert.equal(budget.values.budget.monthly_usd, 12);
+  assert.equal(budget.values.budget.warn_ratio, 0.8);
+  assert.equal(budget.values.telegram.bot_token, "1:a");
+
+  // The run limits live in the telegram block, where the backend reads them.
+  const limits = mergeTelegramSettings(settings, { max_requests_per_hour: 4 });
+  assert.equal(limits.values.telegram.max_requests_per_hour, 4);
+  assert.equal(limits.values.telegram.max_digests_per_day, 50);
+  assert.equal(limits.values.telegram.bot_token, "1:a");
+});
+
+// -- channel records ----------------------------------------------------------
+
 test("buildChannel numbers channels from one", () => {
-  const channel = buildChannel([], { title: "Канал", tg_id: "1", type: "channel" }, "2026-09-13T12:00:00+00:00");
+  const channel = buildChannel(
+    [],
+    { title: "Канал", tg_id: "1", type: "channel" },
+    "2026-09-13T12:00:00+00:00",
+  );
   assert.equal(channel.id, 1);
   assert.equal(channel.username, null);
   assert.equal(channel.has_topics, false);
   assert.equal(channel.default_period_hours, 24);
   assert.deepEqual(channel.include_patterns, []);
+  // Telegram ids exceed 2^53, so they must stay strings.
+  assert.equal(typeof channel.tg_id, "string");
 });
 
 test("buildChannel continues the numbering and marks forums", () => {
@@ -86,22 +142,71 @@ test("buildChannel continues the numbering and marks forums", () => {
   assert.equal(channel.default_period_hours, 6);
 });
 
+// -- presentation helpers -----------------------------------------------------
+
+test("run steps are labelled in Russian and keep their channel", () => {
+  assert.deepEqual(describeStep({ name: "read:c1", status: "ok", detail: "40 сообщений" }), {
+    label: "Читаю Telegram",
+    detail: "40 сообщений",
+    status: "ok",
+  });
+  // Without a detail the channel number is the fallback, so two channels in one run are
+  // still distinguishable.
+  assert.deepEqual(describeStep({ name: "summarize:c3", status: "running" }), {
+    label: "Сжимаю через DeepSeek",
+    detail: "канал 3",
+    status: "running",
+  });
+  assert.equal(describeStep({ name: "deliver:c1", status: "failed" }).status, "failed");
+  // An unknown stage must not produce an empty row.
+  assert.equal(describeStep({ name: "mystery", status: "ok" }).label, "mystery");
+});
+
+test("period labels read like Russian, not like hours", () => {
+  assert.equal(periodLabelFor(6), "6 ч");
+  assert.equal(periodLabelFor(24), "сутки");
+  assert.equal(periodLabelFor(72), "3 дня");
+  assert.equal(periodLabelFor(168), "неделя");
+});
+
+test("plural picks the right Russian form", () => {
+  assert.equal(channelCount(1), "1 канал");
+  assert.equal(channelCount(2), "2 канала");
+  assert.equal(channelCount(5), "5 каналов");
+  assert.equal(channelCount(11), "11 каналов");
+  assert.equal(channelCount(21), "21 канал");
+  assert.equal(plural(0, ["а", "б", "в"]), "в");
+});
+
 // -- module wiring ------------------------------------------------------------
 
-test("index.html loads the vendored library and the module entry point", async () => {
+test("index.html loads the vendored libraries and the module entry point", async () => {
   const html = await readFile(new URL("frontend/index.html", ROOT), "utf8");
   assert.match(html, /<script src="\.\/vendor\/tweetnacl\.js"><\/script>/);
   assert.match(html, /<script src="\.\/vendor\/telegram-web-app\.js"><\/script>/);
   assert.match(html, /<script type="module" src="\.\/assets\/app\.js"><\/script>/);
-  assert.match(html, /<link rel="stylesheet" href="\.\/assets\/theme\.css" \/>/);
+  assert.match(html, /<link rel="stylesheet" href="\.\/assets\/design\.css" \/>/);
+});
+
+test("the theme is resolved before the first paint, in one place", async () => {
+  const html = await readFile(new URL("frontend/index.html", ROOT), "utf8");
+  const script = html.indexOf("documentElement.dataset.theme");
+  assert.ok(script > 0, "the inline theme script is missing");
+  assert.ok(script < html.indexOf("</head>"), "the theme script must run in <head>");
+
+  const css = await readFile(new URL("frontend/assets/design.css", ROOT), "utf8");
+  assert.ok(
+    !/prefers-color-scheme\s*:\s*dark/.test(css),
+    "design.css must not decide the theme on its own; the inline script does",
+  );
 });
 
 for (const name of ASSETS) {
   test(`${name}: every named import resolves`, async () => {
     const source = await readAsset(name);
     const imports = parseImports(source);
-    // Leaf modules such as bytes.js and blake2b.js legitimately import nothing; the
-    // meaningful check is that whatever *is* imported actually exists.
+    // Leaf modules such as bytes.js legitimately import nothing; the meaningful check is
+    // that whatever *is* imported actually exists.
 
     for (const { specifier, names } of imports) {
       assert.match(specifier, /^\.\//, `${name} imports a non-relative path: ${specifier}`);
@@ -135,15 +240,47 @@ test("every element id used by the scripts exists in index.html", async () => {
   }
 });
 
-test("index.html declares every view the app switches between", async () => {
+test("index.html declares the shell the router draws into", async () => {
   const html = await readFile(new URL("frontend/index.html", ROOT), "utf8");
-  for (const view of ["view-welcome", "view-lock", "view-wizard", "view-app"]) {
-    assert.ok(html.includes(`id="${view}"`), `missing view container ${view}`);
+  for (const id of ["appbar", "appbar-title", "nav-back", "theme-toggle", "views", "tabbar"]) {
+    assert.ok(html.includes(`id="${id}"`), `missing shell element ${id}`);
+  }
+  // The chrome starts hidden: the lock screen and onboarding show none of it.
+  assert.match(html, /<header class="appbar" id="appbar" hidden>/);
+  assert.match(html, /<nav class="tabbar" id="tabbar" hidden/);
+  // The cost line lives inside the digest list rather than in a permanent bottom strip.
+  assert.ok(!html.includes("footer-status"), "the global cost strip should be gone");
+  const digests = await readAsset("screen-digests.js");
+  assert.match(digests, /class: "spend"/);
+});
+
+test("the router knows every route a screen can navigate to", async () => {
+  const app = await readAsset("app.js");
+  const routes = new Set([...app.matchAll(/case "([a-z-]+)":/g)].map((match) => match[1]));
+  for (const route of ["digests", "channels", "settings", "digest", "telegram-login", "onboarding"]) {
+    assert.ok(routes.has(route), `app.js has no case for route "${route}"`);
+  }
+
+  const tabs = new Set(
+    [...app.matchAll(/id: "(digests|channels|settings)", title:/g)].map((match) => match[1]),
+  );
+  for (const name of ["screen-channels.js", "screen-settings.js", "screen-digests.js", "onboarding.js"]) {
+    const source = await readAsset(name);
+    for (const match of source.matchAll(/navigate\("([a-z-]+)"/g)) {
+      const route = match[1];
+      assert.ok(
+        routes.has(route) || tabs.has(route),
+        `${name} navigates to "${route}", which nothing handles`,
+      );
+    }
   }
 });
 
-test("the vendored library is present and self-identifying", async () => {
+test("the vendored libraries are present and self-identifying", async () => {
   const vendor = await readFile(new URL("frontend/vendor/tweetnacl.js", ROOT), "utf8");
   assert.ok(vendor.length > 50_000, "tweetnacl.js looks truncated");
   assert.match(vendor, /nacl\.box\.keyPair/);
+
+  const sdk = await readFile(new URL("frontend/vendor/telegram-web-app.js", ROOT), "utf8");
+  assert.match(sdk, /WebApp/);
 });
