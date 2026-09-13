@@ -12,6 +12,7 @@ export const PATHS = {
   loginRequest: "data/login/request.json",
   dialogs: "data/login/dialogs.json",
   topics: "data/login/topics.json",
+  style: "data/style.json",
   channels: "data/channels.json",
   presets: "data/presets.json",
   templates: "data/templates.json",

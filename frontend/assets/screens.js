@@ -685,6 +685,68 @@ export function createTemplatesScreen({ snapshot, client, refresh }) {
     });
     const isDefault = checkboxField({ label: "Использовать по умолчанию", checked: Boolean(preset.is_default) });
 
+    // Generating a style needs the DeepSeek key, which lives in Secrets and cannot be read
+    // by a page — so the browser asks through the branch and a workflow answers.
+    const describe = field({
+      label: "Описать стиль словами",
+      placeholder: "например: коротко, только цифры и факты, без вступлений",
+      hint: "модель превратит описание в стилевые указания",
+    });
+    const generate = el("button", {
+      class: "button",
+      type: "button",
+      text: "Сгенерировать стиль",
+      on: {
+        click: async (event) => {
+          const button = event.currentTarget;
+          button.disabled = true;
+          try {
+            if (!describe.input.value.trim()) {
+              throw new Error("опишите стиль хотя бы одним предложением");
+            }
+            setStatus(status, "Отправляю описание модели…");
+            const startedAt = Date.now();
+            const existing = await client.readJson(PATHS.style);
+            await client.writeJson(
+              PATHS.style,
+              {
+                schema: 1,
+                updated_at: new Date().toISOString(),
+                status: "pending",
+                description: describe.input.value.trim(),
+                style: "",
+                error: null,
+              },
+              "chore(style): request",
+              existing?.sha,
+            );
+            await client.dispatch("style.yml", {});
+
+            const answer = await pollUntil(async () => {
+              const stored = await client.readJson(PATHS.style);
+              const data = stored?.data;
+              if (!isNewerThan(data, startedAt) || data.status === "pending") {
+                return null;
+              }
+              return data;
+            });
+            if (!answer) {
+              throw new Error("модель не ответила за две с половиной минуты");
+            }
+            if (answer.status === "failed") {
+              throw new Error(answer.error ?? "не удалось сгенерировать стиль");
+            }
+            style.input.value = answer.style;
+            setStatus(status, "Готово — проверьте текст и нажмите «Сохранить».", "ok");
+          } catch (error) {
+            setStatus(status, error.message, "error");
+          } finally {
+            button.disabled = false;
+          }
+        },
+      },
+    });
+
     const save = async () => {
       try {
         const updated = presets.map((entry) =>
@@ -728,6 +790,8 @@ export function createTemplatesScreen({ snapshot, client, refresh }) {
       name.field,
       promptKey.field,
       style.field,
+      describe.field,
+      el("div", { class: "row" }, [generate]),
       isDefault.field,
     ]);
   };
