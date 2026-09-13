@@ -38,7 +38,7 @@ jobs:
       - name: Run frontend tests
         # The tariff rules are duplicated in the browser on purpose; this keeps
         # the copy honest against backend/pricing.py.
-        run: node --test tests/
+        run: node --test tests/*.test.mjs
 
   deploy:
     name: deploy to Pages

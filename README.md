@@ -39,7 +39,7 @@
 
 ```bash
 # тесты фронтенда (правила тарифа peak/off-peak)
-node --test tests/
+node --test tests/*.test.mjs
 
 # локальный просмотр
 python3 -m http.server 8000 --directory frontend
