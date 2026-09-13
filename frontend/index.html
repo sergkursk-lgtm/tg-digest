@@ -8,9 +8,8 @@
     <meta name="color-scheme" content="light dark" />
     <link rel="stylesheet" href="./assets/theme.css" />
     <script>
-      // Resolve the theme before the first paint, so the page never flashes
-      // the wrong colours. The stored value is the user's choice:
-      // "system" | "light" | "dark".
+      // Resolve the theme before the first paint, so the page never flashes the wrong
+      // colours. The stored value is the user's choice: "system" | "light" | "dark".
       (function () {
         var theme = "system";
         try {
@@ -34,40 +33,29 @@
     </header>
 
     <main class="shell">
-      <section class="card">
-        <h1>Оболочка опубликована</h1>
-        <p class="lede">
-          Это клиентская часть приложения. Здесь не будет ни секретов, ни данных:
-          браузер работает с GitHub API от вашего имени по токену, который вы вводите сами.
-        </p>
+      <!-- No token yet: introduce the project and ask for the GitHub token. -->
+      <section id="view-welcome" class="view" hidden></section>
 
-        <h2>Что уже готово</h2>
-        <ul class="checklist">
-          <li>Светлая и тёмная темы с учётом системной настройки</li>
-          <li>Индикатор текущего тарифа DeepSeek в подвале</li>
-        </ul>
+      <!-- Token stored: ask for the PIN that decrypts it. -->
+      <section id="view-lock" class="view" hidden></section>
 
-        <h2>Что дальше</h2>
-        <ol class="checklist checklist--ordered">
-          <li>PIN-гейт: PIN расшифровывает токен GitHub, ничего не хранится в открытом виде</li>
-          <li>Настройки: форма секретов и чек-лист</li>
-          <li>Каналы: добавление и удаление</li>
-          <li>Дашборд: запуск дайджеста и статус прогона</li>
-          <li>Дайджест, шаблоны, статистика стоимости</li>
-        </ol>
+      <!-- The setup wizard. -->
+      <section id="view-wizard" class="view" hidden></section>
 
-        <p class="muted">
-          Бэкенд и данные живут в приватном репозитории
-          <a href="https://github.com/sergkursk-lgtm/tg-digest-core">tg-digest-core</a>.
-        </p>
-      </section>
+      <!-- Everything configured. -->
+      <section id="view-app" class="view" hidden></section>
     </main>
 
     <footer class="footer">
       <span id="tariff" class="footer__tariff">определяем тариф…</span>
+      <span id="footer-tokens" class="footer__figure">Токенов: 0</span>
+      <span id="footer-cost" class="footer__figure">Стоимость: $0.0000</span>
+      <span id="footer-budget" class="footer__figure">Бюджет: $5.0000/мес</span>
       <span class="footer__muted">модель: <span id="footer-model">deepseek-flash</span></span>
     </footer>
 
+    <!-- Vendored UMD library: it must be a classic script, so it lands on window.nacl. -->
+    <script src="./vendor/tweetnacl.js"></script>
     <script type="module" src="./assets/app.js"></script>
   </body>
 </html>

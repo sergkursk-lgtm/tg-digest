@@ -20,34 +20,10 @@
  */
 
 import { blake2b } from "./blake2b.js";
+import { fromBase64, toBase64, utf8Decode, utf8Encode } from "./bytes.js";
 
 const NONCE_BYTES = 24;
 const PUBLIC_KEY_BYTES = 32;
-
-/** Decode base64 into bytes, in both the browser and Node. */
-function fromBase64(value) {
-  if (typeof atob === "function") {
-    const binary = atob(value);
-    const bytes = new Uint8Array(binary.length);
-    for (let index = 0; index < binary.length; index += 1) {
-      bytes[index] = binary.charCodeAt(index);
-    }
-    return bytes;
-  }
-  return new Uint8Array(Buffer.from(value, "base64"));
-}
-
-/** Encode bytes as base64, in both the browser and Node. */
-function toBase64(bytes) {
-  if (typeof btoa === "function") {
-    let binary = "";
-    for (const byte of bytes) {
-      binary += String.fromCharCode(byte);
-    }
-    return btoa(binary);
-  }
-  return Buffer.from(bytes).toString("base64");
-}
 
 /**
  * Derive the sealed-box nonce exactly as libsodium does.
@@ -79,7 +55,7 @@ export function sealBox(nacl, message, recipientPublicKeyBase64) {
   const ephemeral = nacl.box.keyPair();
   const nonce = sealedBoxNonce(ephemeral.publicKey, recipientPublicKey);
   const sharedKey = nacl.box.before(recipientPublicKey, ephemeral.secretKey);
-  const boxed = nacl.box.after(new TextEncoder().encode(message), nonce, sharedKey);
+  const boxed = nacl.box.after(utf8Encode(message), nonce, sharedKey);
 
   const sealed = new Uint8Array(PUBLIC_KEY_BYTES + boxed.length);
   sealed.set(ephemeral.publicKey, 0);
@@ -105,7 +81,7 @@ export function openSealedBox(nacl, sealedBase64, recipientPublicKey, recipientS
   if (opened === null) {
     throw new Error("sealed box could not be opened");
   }
-  return new TextDecoder().decode(opened);
+  return utf8Decode(opened);
 }
 
 /** Exposed for tests. */
