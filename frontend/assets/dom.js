@@ -108,11 +108,16 @@ export function statusLine(message = "", kind = "info") {
 
 /**
  * Set the text and visibility of a status line.
- * @param {HTMLElement} node
+ * @param {HTMLElement|null} node
  * @param {string} message
  * @param {"info"|"ok"|"warn"|"error"} [kind]
  */
 export function setStatus(node, message, kind = "info") {
+  if (!node) {
+    // A screen may have been re-rendered while an action was in flight; losing a status
+    // line is better than throwing out of an event handler.
+    return;
+  }
   node.textContent = message;
   node.className = `status status--${kind}`;
   node.hidden = !message;
