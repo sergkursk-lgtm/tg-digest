@@ -51,13 +51,24 @@ test("nothing configured leaves every visible step pending", () => {
   assert.equal(isSetupComplete(steps), false);
 });
 
-test("api credentials already in Secrets count as configured", () => {
+test("api credentials already in Secrets still require the phone and a code", () => {
+  // Regression: treating the Secrets as completion sent the wizard straight to a code
+  // prompt for a code nothing had sent, with nowhere to enter the phone number.
   const steps = setupSteps(snapshot(), ["TG_API_ID", "TG_API_HASH"]);
-  assert.equal(step(steps, "telegram-app").done, true);
+  assert.equal(step(steps, "telegram-app").done, false);
+  assert.equal(step(steps, "telegram-code").hidden, true);
+  assert.equal(nextStepId(steps), "telegram-app");
 });
 
-test("api credentials from the data branch count as configured", () => {
-  const steps = setupSteps(snapshot({ login: { api_id: 1, api_hash: "h", phone: "+7" } }), []);
+test("a requested code opens the code step", () => {
+  const steps = setupSteps(snapshot({ login: { step: "code_sent", phone: "+7" } }), []);
+  assert.equal(step(steps, "telegram-app").done, true);
+  assert.equal(step(steps, "telegram-code").hidden, false);
+  assert.equal(nextStepId(steps), "telegram-code");
+});
+
+test("credentials from the data branch count as configured", () => {
+  const steps = setupSteps(snapshot({ login: { api_id: 1, api_hash: "h", step: "code_sent" } }), []);
   assert.equal(step(steps, "telegram-app").done, true);
 });
 
@@ -78,11 +89,10 @@ test("a session already in Secrets needs neither the code nor the promote step",
   assert.equal(isSetupComplete(steps), false); // deepseek, bot and channels remain
 });
 
-test("a failed login leaves the code step visible so it can be retried", () => {
+test("a failed login returns to the app step so a code can be requested again", () => {
   const steps = setupSteps(snapshot({ login: { step: "failed", api_id: 1, api_hash: "h" } }), []);
-  assert.equal(step(steps, "telegram-code").hidden, false);
-  assert.equal(step(steps, "telegram-code").done, false);
-  assert.equal(nextStepId(steps), "telegram-code");
+  assert.equal(step(steps, "telegram-code").hidden, true);
+  assert.equal(nextStepId(steps), "telegram-app");
 });
 
 test("bot delivery needs both the token and the chat id", () => {

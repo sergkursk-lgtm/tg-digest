@@ -563,3 +563,67 @@ a {
   border-top: 2px solid var(--border);
   border-bottom: none;
 }
+
+/* Editors ----------------------------------------------------------------- */
+
+.subcard {
+  margin: 0 0 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-alt);
+}
+
+.subcard .field {
+  margin-bottom: 10px;
+}
+
+.input--area {
+  min-height: 80px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.checkline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  font-size: 14px;
+}
+
+.checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.preview {
+  padding: 12px 14px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.preview h1 {
+  font-size: 18px;
+}
+
+.preview h2 {
+  margin: 12px 0 6px;
+  font-size: 15px;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text);
+}
+
+.preview ul {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+
+.preview hr {
+  margin: 12px 0;
+  border: none;
+  border-top: 1px solid var(--border);
+}

@@ -7,7 +7,7 @@
  * never needs to trust markup at all.
  */
 
-import { el, field, setStatus, statusLine } from "./dom.js";
+import { el, checkboxField, field, selectField, setStatus, statusLine, textareaField } from "./dom.js";
 import { sanitizeHtml } from "./sanitize.js";
 import { sendToBot } from "./telegram.js";
 import {
@@ -20,6 +20,45 @@ import {
   formatUsd,
   usageByDay,
 } from "./state.js";
+
+/** The system prompt keys the backend hardcodes; the UI cannot add new ones. */
+export const PROMPT_KEYS = [
+  { value: "summary_brief", label: "Краткий" },
+  { value: "summary_detailed", label: "Детальный" },
+  { value: "summary_analytical", label: "Аналитический" },
+];
+
+/** Grouping strategies the renderer and the model understand. */
+export const GROUPINGS = [
+  { value: "topics", label: "По форум-топикам" },
+  { value: "llm", label: "По темам (определяет модель)" },
+  { value: "dates", label: "По датам" },
+  { value: "channels", label: "По каналам" },
+];
+
+/** Sections a template may ask for; mirrors ALLOWED_SECTIONS in the renderer. */
+export const SECTIONS = [
+  { value: "summary", label: "Сводка по темам" },
+  { value: "meta", label: "Строка с числом сообщений и стоимостью" },
+];
+
+/** Longest style prompt the backend accepts. */
+export const MAX_STYLE_CHARS = 2000;
+
+/** Write a collection envelope, keeping the schema shape. */
+async function saveList(client, path, sha, items, message) {
+  await client.writeJson(
+    path,
+    { schema: 1, updated_at: new Date().toISOString(), items },
+    message,
+    sha,
+  );
+}
+
+/** The next free id in a collection. */
+function nextId(items) {
+  return items.reduce((max, item) => Math.max(max, Number(item.id ?? 0)), 0) + 1;
+}
 
 /** A section header with an optional subtitle. */
 function header(title, subtitle) {
@@ -377,5 +416,302 @@ export function createStatsScreen({ snapshot }) {
     days.length
       ? el("div", { class: "table-wrap" }, [table])
       : el("p", { class: "muted", text: "В этом месяце ещё ничего не потрачено." }),
+  ]);
+}
+
+/**
+ * The templates and presets screen.
+ *
+ * Presets decide *what* the model is asked for (the style text is wrapped in `<<STYLE>>`
+ * by the backend); templates decide *how* the answer is laid out. Both are stored in the
+ * data branch, so an edit here is an edit for every browser.
+ *
+ * @param {object} options
+ * @param {object} options.snapshot
+ * @param {object} options.client
+ * @param {Function} options.refresh
+ */
+export function createTemplatesScreen({ snapshot, client, refresh }) {
+  const status = statusLine();
+  const preview = el("div", { class: "digest preview" });
+
+  /** Render a sample digest from the template currently being edited. */
+  const renderPreview = (draft) => {
+    preview.replaceChildren();
+    const title = String(draft.title_template || "# Дайджест: {channel} — {period}")
+      .replace("{channel}", "Пример канала")
+      .replace("{period}", "12.09 12:00 — 13.09 12:00 UTC")
+      .replace(/^#+\s*/, "");
+
+    preview.append(el("h1", { text: title }));
+    const sections = draft.sections ?? [];
+    const topics = [
+      { title: "Тарифы", bullets: ["Цена выросла на 10%", "Добавили ночной тариф"] },
+      { title: "Логистика", bullets: ["Сроки сдвинулись на неделю"] },
+    ];
+
+    if (sections.includes("summary")) {
+      for (const topic of topics) {
+        preview.append(el("h2", { text: topic.title }));
+        preview.append(el("ul", {}, topic.bullets.map((bullet) => el("li", { text: bullet }))));
+      }
+    } else {
+      preview.append(el("p", { class: "muted", text: "Секция «Сводка по темам» выключена:" }));
+      preview.append(el("ul", {}, topics.map((topic) => el("li", { text: topic.title }))));
+    }
+
+    if (sections.includes("meta")) {
+      preview.append(el("hr"));
+      preview.append(el("p", { class: "muted", text: "сообщений: 412 · стоимость: $0.0136" }));
+    }
+  };
+
+  /** One preset editor. */
+  const presetForm = (preset, presets) => {
+    const name = field({ label: "Название", value: preset.name });
+    const promptKey = selectField({
+      label: "Системный промпт",
+      value: preset.system_prompt_key,
+      options: PROMPT_KEYS,
+      hint: "тексты промптов захардкожены в backend/prompts.py и из интерфейса не меняются",
+    });
+    const style = textareaField({
+      label: "Стилевые указания",
+      value: preset.user_prompt_style ?? "",
+      rows: 4,
+      maxlength: MAX_STYLE_CHARS,
+      hint: `до ${MAX_STYLE_CHARS} символов; это стиль, а не команды — backend оборачивает его в блок <<STYLE>>`,
+    });
+    const isDefault = checkboxField({ label: "Использовать по умолчанию", checked: Boolean(preset.is_default) });
+
+    const save = async () => {
+      try {
+        const updated = presets.map((entry) =>
+          entry.id === preset.id
+            ? {
+                ...entry,
+                name: name.input.value.trim() || entry.name,
+                system_prompt_key: promptKey.input.value,
+                user_prompt_style: style.input.value,
+                is_default: isDefault.input.checked ? 1 : 0,
+              }
+            : isDefault.input.checked
+              ? { ...entry, is_default: 0 }
+              : entry,
+        );
+        await saveList(client, PATHS.presets, snapshot.presetsSha, updated, `feat(presets): update ${preset.name}`);
+        setStatus(status, "Пресет сохранён.", "ok");
+        await refresh();
+      } catch (error) {
+        setStatus(status, error.message, "error");
+      }
+    };
+
+    const remove = async () => {
+      try {
+        const remaining = presets.filter((entry) => entry.id !== preset.id);
+        await saveList(client, PATHS.presets, snapshot.presetsSha, remaining, `feat(presets): remove ${preset.id}`);
+        setStatus(status, "Пресет удалён.", "ok");
+        await refresh();
+      } catch (error) {
+        setStatus(status, error.message, "error");
+      }
+    };
+
+    return el("div", { class: "subcard" }, [
+      el("div", { class: "row" }, [
+        el("strong", { text: preset.name }),
+        el("button", { class: "button", type: "button", text: "Сохранить", on: { click: save } }),
+        el("button", { class: "button button--link", type: "button", text: "Удалить", on: { click: remove } }),
+      ]),
+      name.field,
+      promptKey.field,
+      style.field,
+      isDefault.field,
+    ]);
+  };
+
+  /** One template editor with a live preview. */
+  const templateForm = (template, templates) => {
+    const name = field({ label: "Название", value: template.name });
+    const grouping = selectField({
+      label: "Группировка",
+      value: template.grouping,
+      options: GROUPINGS,
+    });
+    const title = field({
+      label: "Шаблон заголовка",
+      value: template.title_template,
+      hint: "доступны {channel} и {period}; неизвестные подстановки останутся как есть",
+    });
+
+    const sectionBoxes = SECTIONS.map((section) => ({
+      section,
+      box: checkboxField({
+        label: section.label,
+        checked: (template.sections ?? []).includes(section.value),
+      }),
+    }));
+
+    const draft = () => ({
+      title_template: title.input.value,
+      sections: sectionBoxes.filter((entry) => entry.box.input.checked).map((entry) => entry.section.value),
+    });
+
+    for (const entry of sectionBoxes) {
+      entry.box.input.addEventListener("change", () => renderPreview(draft()));
+    }
+    title.input.addEventListener("input", () => renderPreview(draft()));
+
+    const save = async () => {
+      try {
+        const updated = templates.map((entry) =>
+          entry.id === template.id
+            ? {
+                ...entry,
+                name: name.input.value.trim() || entry.name,
+                grouping: grouping.input.value,
+                title_template: title.input.value,
+                sections: draft().sections,
+              }
+            : entry,
+        );
+        await saveList(client, PATHS.templates, snapshot.templatesSha, updated, `feat(templates): update ${template.name}`);
+        setStatus(status, "Шаблон сохранён.", "ok");
+        await refresh();
+      } catch (error) {
+        setStatus(status, error.message, "error");
+      }
+    };
+
+    const remove = async () => {
+      try {
+        const remaining = templates.filter((entry) => entry.id !== template.id);
+        await saveList(client, PATHS.templates, snapshot.templatesSha, remaining, `feat(templates): remove ${template.id}`);
+        setStatus(status, "Шаблон удалён.", "ok");
+        await refresh();
+      } catch (error) {
+        setStatus(status, error.message, "error");
+      }
+    };
+
+    return el("div", { class: "subcard" }, [
+      el("div", { class: "row" }, [
+        el("strong", { text: template.name }),
+        el("button", { class: "button", type: "button", text: "Сохранить", on: { click: save } }),
+        el("button", { class: "button button--link", type: "button", text: "Удалить", on: { click: remove } }),
+      ]),
+      name.field,
+      grouping.field,
+      title.field,
+      ...sectionBoxes.map((entry) => entry.box.field),
+    ]);
+  };
+
+  /** Assign a preset and a period to each channel. */
+  const channelRow = (channel) => {
+    const preset = selectField({
+      label: channel.title,
+      value: String(channel.summary_style_id ?? ""),
+      options: [
+        { value: "", label: "Пресет по умолчанию" },
+        ...snapshot.presets.map((entry) => ({ value: String(entry.id), label: entry.name })),
+      ],
+    });
+    const period = field({
+      label: "Период, часов",
+      type: "number",
+      value: String(channel.default_period_hours ?? 24),
+    });
+
+    const save = async () => {
+      try {
+        const updated = snapshot.channels.map((entry) =>
+          entry.id === channel.id
+            ? {
+                ...entry,
+                summary_style_id: preset.input.value ? Number(preset.input.value) : null,
+                default_period_hours: Number(period.input.value || 24),
+              }
+            : entry,
+        );
+        await saveList(client, PATHS.channels, snapshot.channelsSha, updated, `feat(channels): tune ${channel.id}`);
+        setStatus(status, `Канал «${channel.title}» обновлён.`, "ok");
+        await refresh();
+      } catch (error) {
+        setStatus(status, error.message, "error");
+      }
+    };
+
+    return el("div", { class: "subcard" }, [
+      preset.field,
+      period.field,
+      el("button", { class: "button", type: "button", text: "Сохранить", on: { click: save } }),
+    ]);
+  };
+
+  const addPreset = async () => {
+    try {
+      const id = nextId(snapshot.presets);
+      const updated = [
+        ...snapshot.presets,
+        {
+          id,
+          name: `Пресет ${id}`,
+          system_prompt_key: "summary_brief",
+          user_prompt_style: "",
+          is_default: 0,
+          created_at: new Date().toISOString(),
+        },
+      ];
+      await saveList(client, PATHS.presets, snapshot.presetsSha, updated, "feat(presets): add");
+      await refresh();
+    } catch (error) {
+      setStatus(status, error.message, "error");
+    }
+  };
+
+  const addTemplate = async () => {
+    try {
+      const id = nextId(snapshot.templates);
+      const updated = [
+        ...snapshot.templates,
+        {
+          id,
+          name: `Шаблон ${id}`,
+          grouping: "topics",
+          sections: ["summary"],
+          title_template: "# Дайджест: {channel} — {period}",
+          is_default: 0,
+          created_at: new Date().toISOString(),
+        },
+      ];
+      await saveList(client, PATHS.templates, snapshot.templatesSha, updated, "feat(templates): add");
+      await refresh();
+    } catch (error) {
+      setStatus(status, error.message, "error");
+    }
+  };
+
+  renderPreview(snapshot.templates[0] ?? { title_template: "", sections: ["summary"] });
+
+  return el("section", { class: "card" }, [
+    header("Шаблоны и пресеты", "Пресет задаёт стиль сводки, шаблон — её вид."),
+    status,
+    el("h2", { text: "Пресеты" }),
+    ...snapshot.presets.map((preset) => presetForm(preset, snapshot.presets)),
+    el("button", { class: "button", type: "button", text: "Добавить пресет", on: { click: addPreset } }),
+
+    el("h2", { text: "Каналы" }),
+    snapshot.channels.length
+      ? el("div", {}, snapshot.channels.map((channel) => channelRow(channel)))
+      : el("p", { class: "muted", text: "Каналов пока нет." }),
+
+    el("h2", { text: "Шаблоны" }),
+    ...snapshot.templates.map((template) => templateForm(template, snapshot.templates)),
+    el("button", { class: "button", type: "button", text: "Добавить шаблон", on: { click: addTemplate } }),
+
+    el("h2", { text: "Превью" }),
+    preview,
   ]);
 }

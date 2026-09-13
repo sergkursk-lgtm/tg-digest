@@ -28,6 +28,7 @@ import {
   createDigestScreen,
   createSettingsScreen,
   createStatsScreen,
+  createTemplatesScreen,
 } from "./screens.js";
 import { MODEL, tariffLabel, tariffSnapshot } from "./tariff.js";
 import { createWizard } from "./wizard.js";
@@ -294,6 +295,7 @@ function tabs() {
   return [
     { id: "channels", title: "Каналы", build: () => createChannelsTab() },
     { id: "digests", title: "Дайджесты", build: () => createDigestScreen(screens) },
+    { id: "templates", title: "Шаблоны", build: () => createTemplatesScreen(screens) },
     { id: "settings", title: "Настройки", build: () => createSettingsScreen(screens) },
     { id: "stats", title: "Статистика", build: () => createStatsScreen(screens) },
   ];

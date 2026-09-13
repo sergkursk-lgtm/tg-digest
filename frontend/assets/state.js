@@ -54,8 +54,11 @@ export async function loadSnapshot(client, month = monthKey(new Date())) {
     channels: channels.data?.items ?? [],
     channelsSha: channels.sha,
     presets: presets.data?.items ?? [],
+    presetsSha: presets.sha,
     templates: templates.data?.items ?? [],
+    templatesSha: templates.sha,
     digests: index.data?.items ?? [],
+    digestsSha: index.sha,
     usage: usage.data,
     setupRun: setupRun.data,
     month,
@@ -84,8 +87,7 @@ export function setupSteps(snapshot, secretNames = []) {
   const telegram = snapshot?.settings?.values?.telegram ?? {};
   const has = (name) => secretNames.includes(name);
 
-  const apiCredentials =
-    Boolean(login.api_id && login.api_hash) || (has("TG_API_ID") && has("TG_API_HASH"));
+  const codeRequested = login.step === "code_sent";
   const sessionReady = login.step === "authorized" || has("TG_STRING_SESSION");
   const sessionInSecrets = has("TG_STRING_SESSION");
   const deepseekReady = has(DEEPSEEK_SECRET);
@@ -97,7 +99,10 @@ export function setupSteps(snapshot, secretNames = []) {
       id: "telegram-app",
       title: "Приложение Telegram",
       hint: "api_id, api_hash и номер телефона с my.telegram.org",
-      done: apiCredentials,
+      // Knowing the app credentials is not the same as being logged in: the login still
+      // needs the phone number and a requested code. Treating the secrets as completion
+      // sent the wizard straight to a code prompt that nothing had sent.
+      done: codeRequested || sessionReady,
       hidden: false,
     },
     {
@@ -105,8 +110,8 @@ export function setupSteps(snapshot, secretNames = []) {
       title: "Код из Telegram",
       hint: "код придёт в приложение Telegram, а не по SMS",
       done: sessionReady,
-      // Not actionable before the app credentials are known, and pointless afterwards.
-      hidden: !apiCredentials || sessionReady,
+      // Only meaningful once a code has actually been requested.
+      hidden: !codeRequested || sessionReady,
     },
     {
       id: "telegram-session",

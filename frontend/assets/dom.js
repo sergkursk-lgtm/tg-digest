@@ -55,7 +55,77 @@ export function clear(node) {
   node.replaceChildren();
 }
 
-/** Show one element and hide the rest. */
+/**
+ * Build a labelled multi-line text field.
+ * @param {object} options same shape as {@link field}, plus `rows`
+ * @returns {{field: HTMLElement, input: HTMLTextAreaElement}}
+ */
+export function textareaField(options) {
+  const input = el("textarea", {
+    id: options.id,
+    class: "input input--area",
+    rows: options.rows ?? 5,
+    placeholder: options.placeholder ?? "",
+    spellcheck: "false",
+    maxlength: options.maxlength,
+  });
+  input.value = options.value ?? "";
+  const wrapper = el("label", { class: "field" }, [
+    el("span", { class: "field__label", text: options.label }),
+    input,
+    options.hint ? el("span", { class: "field__hint", text: options.hint }) : null,
+  ]);
+  return { field: wrapper, input };
+}
+
+/**
+ * Build a labelled select.
+ * @param {object} options
+ * @param {string} options.label
+ * @param {Array<{value: string, label: string}>} options.options
+ * @param {string} [options.value]
+ * @param {string} [options.hint]
+ * @returns {{field: HTMLElement, input: HTMLSelectElement}}
+ */
+export function selectField(options) {
+  const input = el(
+    "select",
+    { id: options.id, class: "input" },
+    options.options.map((entry) =>
+      el("option", { value: entry.value, text: entry.label, selected: entry.value === options.value }),
+    ),
+  );
+  input.value = options.value ?? options.options[0]?.value ?? "";
+  const wrapper = el("label", { class: "field" }, [
+    el("span", { class: "field__label", text: options.label }),
+    input,
+    options.hint ? el("span", { class: "field__hint", text: options.hint }) : null,
+  ]);
+  return { field: wrapper, input };
+}
+
+/**
+ * Build a checkbox row.
+ * @param {object} options
+ * @param {string} options.label
+ * @param {boolean} [options.checked]
+ * @returns {{field: HTMLElement, input: HTMLInputElement}}
+ */
+export function checkboxField(options) {
+  const input = el("input", { type: "checkbox", class: "checkbox" });
+  input.checked = Boolean(options.checked);
+  const wrapper = el("label", { class: "checkline" }, [
+    input,
+    el("span", { text: options.label }),
+  ]);
+  return { field: wrapper, input };
+}
+
+/**
+ * Show exactly one element and hide the rest.
+ * @param {HTMLElement[]} nodes
+ * @param {HTMLElement} active
+ */
 export function showOnly(nodes, active) {
   for (const node of nodes) {
     node.hidden = node !== active;

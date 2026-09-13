@@ -356,8 +356,20 @@ export function createWizard({ mount, context, nacl, refresh, onComplete, client
     /** Step 2: Telegram application credentials, then request a code. */
     "telegram-app": (node) => {
       const status = statusLine();
-      const apiId = field({ label: "api_id", value: snapshot.login?.api_id ?? "", hint: "число с my.telegram.org" });
-      const apiHash = field({ label: "api_hash", value: snapshot.login?.api_hash ?? "" });
+      const secretsHaveApp =
+        secretNames.includes("TG_API_ID") && secretNames.includes("TG_API_HASH");
+      const apiId = field({
+        label: "api_id",
+        value: snapshot.login?.api_id ?? "",
+        hint: secretsHaveApp
+          ? "уже сохранён в Secrets — можно оставить пустым"
+          : "число с my.telegram.org",
+      });
+      const apiHash = field({
+        label: "api_hash",
+        value: snapshot.login?.api_hash ?? "",
+        hint: secretsHaveApp ? "уже сохранён в Secrets" : "",
+      });
       const phone = field({
         label: "Номер телефона",
         value: snapshot.login?.phone ?? "",
@@ -383,34 +395,48 @@ export function createWizard({ mount, context, nacl, refresh, onComplete, client
               const button = event.currentTarget;
               button.disabled = true;
               try {
-                if (!/^\d+$/.test(apiId.input.value.trim())) {
+                const appId = apiId.input.value.trim();
+                const appHash = apiHash.input.value.trim();
+                const phoneNumber = phone.input.value.trim();
+
+                // The credentials may already be in Secrets from an earlier session; then
+                // only the phone number is still needed to request a code.
+                if (!secretsHaveApp && !/^\d+$/.test(appId)) {
                   throw new Error("api_id должен быть числом");
                 }
-                if (!apiHash.input.value.trim()) {
+                if (!secretsHaveApp && !appHash) {
                   throw new Error("api_hash пуст");
                 }
-                if (!phone.input.value.trim()) {
+                if (!phoneNumber) {
                   throw new Error("номер телефона пуст");
                 }
 
                 setStatus(status, "Сохраняю ключи приложения…");
-                const results = await Promise.all([
-                  tryPutSecret("TG_API_ID", apiId.input.value.trim()),
-                  tryPutSecret("TG_API_HASH", apiHash.input.value.trim()),
-                  tryPutSecret("TG_PHONE", phone.input.value.trim()),
-                ]);
+                const results = [await tryPutSecret("TG_PHONE", phoneNumber)];
+                if (appId) {
+                  results.push(await tryPutSecret("TG_API_ID", appId));
+                }
+                if (appHash) {
+                  results.push(await tryPutSecret("TG_API_HASH", appHash));
+                }
                 const failed = results.find((result) => !result.ok);
 
-                await saveLoginState({
+                const patch = {
                   step: "idle",
-                  api_id: Number(apiId.input.value.trim()),
-                  api_hash: apiHash.input.value.trim(),
-                  phone: phone.input.value.trim(),
+                  phone: phoneNumber,
                   session: null,
                   user_id: null,
                   username: null,
                   error: null,
-                });
+                };
+                // Never blank out credentials that are already stored or in Secrets.
+                if (appId) {
+                  patch.api_id = Number(appId);
+                }
+                if (appHash) {
+                  patch.api_hash = appHash;
+                }
+                await saveLoginState(patch);
 
                 setStatus(status, "Запускаю отправку кода…");
                 await context.client.dispatch(LOGIN_WORKFLOW, { step: "send-code" });
