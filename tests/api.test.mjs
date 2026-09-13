@@ -51,16 +51,19 @@ function createFakeGitHub(options = {}) {
   async function fetchImpl(url, init = {}) {
     const method = init.method ?? "GET";
     const body = init.body ? JSON.parse(init.body) : null;
-    state.calls.push({ url, method, body });
+    state.calls.push({ url, method, body, cache: init.cache });
+
+    // Reads carry a cache-busting parameter; route on the path only.
+    const path = url.split("?")[0];
 
     if (state.permissionDenied && url.includes(state.permissionDenied)) {
       return json({ message: "Resource not accessible by personal access token" }, 403);
     }
 
-    if (url === `${API_ROOT}/user`) {
+    if (path === `${API_ROOT}/user`) {
       return json({ login: "tester", name: "Test User" });
     }
-    if (url === REPO_BASE) {
+    if (path === REPO_BASE) {
       return json({
         full_name: `${OWNER}/${REPO}`,
         private: true,
@@ -68,14 +71,14 @@ function createFakeGitHub(options = {}) {
         permissions: { push: true },
       });
     }
-    if (url === `${REPO_BASE}/actions/secrets/public-key`) {
+    if (path === `${REPO_BASE}/actions/secrets/public-key`) {
       return json({ key_id: "key-1", key: toBase64(keyPair.publicKey) });
     }
-    if (url === `${REPO_BASE}/actions/secrets` && method === "GET") {
+    if (path === `${REPO_BASE}/actions/secrets` && method === "GET") {
       return json({ secrets: [...state.secrets.keys()].map((name) => ({ name })) });
     }
-    if (url.startsWith(`${REPO_BASE}/actions/secrets/`)) {
-      const name = decodeURIComponent(url.slice(`${REPO_BASE}/actions/secrets/`.length));
+    if (path.startsWith(`${REPO_BASE}/actions/secrets/`)) {
+      const name = decodeURIComponent(path.slice(`${REPO_BASE}/actions/secrets/`.length));
       if (method === "PUT") {
         const opened = openSealedBox(
           nacl,
@@ -132,11 +135,11 @@ function createFakeGitHub(options = {}) {
       }
     }
 
-    if (url.includes("/actions/workflows/") && url.endsWith("/dispatches")) {
+    if (path.includes("/actions/workflows/") && path.endsWith("/dispatches")) {
       state.dispatches.push(body);
       return new Response(null, { status: 204 });
     }
-    if (url.includes("/actions/workflows/") && url.includes("/runs")) {
+    if (path.includes("/actions/workflows/") && path.includes("/runs")) {
       return json({
         workflow_runs: state.dispatches.length
           ? [
@@ -356,4 +359,53 @@ test("a file can be read from an explicit branch", async () => {
   });
   const stored = await clientFor(fake).readJsonOnBranch("data/x.json", "data");
   assert.equal(stored.data.ok, true);
+});
+
+// -- cache behaviour ----------------------------------------------------------
+
+test("reads ask the browser not to cache", async () => {
+  // GitHub serves Contents reads with `Cache-Control: private, max-age=60`. Without this
+  // the wizard's poll kept seeing a stale body — observed while watching a login step.
+  const fake = createFakeGitHub();
+  const seen = [];
+  const client = createGitHub({
+    token: "pat-test",
+    owner: OWNER,
+    repo: REPO,
+    nacl,
+    fetchImpl: async (url, init) => {
+      seen.push(init?.cache);
+      return fake.fetchImpl(url, init);
+    },
+  });
+
+  await client.readJson("data/settings.json");
+  await client.listSecretNames();
+  await client.latestRun("digest.yml");
+  assert.ok(seen.length >= 3);
+  assert.ok(
+    seen.every((value) => value === "no-store"),
+    `expected no-store everywhere, saw ${JSON.stringify(seen)}`,
+  );
+});
+
+test("consecutive reads use different URLs so no cache layer can serve a stale body", async () => {
+  const fake = createFakeGitHub();
+  const client = clientFor(fake);
+  await client.readJson("data/settings.json");
+  await new Promise((resolve) => setTimeout(resolve, 2));
+  await client.readJson("data/settings.json");
+
+  const reads = fake.state.calls.filter((call) => call.method === "GET" && call.url.includes("/contents/"));
+  assert.equal(reads.length, 2);
+  assert.notEqual(reads[0].url, reads[1].url);
+  assert.match(reads[0].url, /[?&]_=\d+/);
+});
+
+test("writes are not affected by the cache-busting parameter", async () => {
+  const fake = createFakeGitHub();
+  await clientFor(fake).writeJson("data/x.json", { a: 1 }, "msg");
+  const put = fake.state.calls.find((call) => call.method === "PUT");
+  assert.ok(!put.url.includes("_="));
+  assert.equal(put.body.branch, "data");
 });

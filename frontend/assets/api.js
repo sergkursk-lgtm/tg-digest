@@ -83,7 +83,10 @@ export function createGitHub({
   async function request(url, init = {}, { context = url, allow404 = false } = {}) {
     let response;
     try {
-      response = await fetchImpl(url, { headers, ...init });
+      // GitHub answers Contents reads with `Cache-Control: private, max-age=60`. Without
+      // no-store the browser would serve a stale body to the wizard's poll for a whole
+      // minute, which is exactly what happened when a login step was being watched.
+      response = await fetchImpl(url, { headers, cache: "no-store", ...init });
     } catch (error) {
       throw new GitHubError(`нет связи с GitHub: ${error.message}`, 0, null);
     }
@@ -116,6 +119,14 @@ export function createGitHub({
 
   const contentsUrl = (path) => `${repoBase}/contents/${path}`;
 
+  /**
+   * Add a throwaway parameter so a poll never reads a cached body.
+   *
+   * `cache: "no-store"` should be enough, but GitHub serves Contents reads with
+   * `max-age=60` and a unique URL is the only thing every cache layer respects.
+   */
+  const fresh = (url) => `${url}${url.includes("?") ? "&" : "?"}_=${Date.now()}`;
+
   return {
     owner,
     repo,
@@ -142,7 +153,7 @@ export function createGitHub({
     /** Names of the repository's secrets. Values are never returned by GitHub. */
     async listSecretNames() {
       const body = await request(
-        `${repoBase}/actions/secrets`,
+        fresh(`${repoBase}/actions/secrets`),
         {},
         { context: "список секретов" },
       );
@@ -190,7 +201,7 @@ export function createGitHub({
      */
     async readJson(path) {
       const body = await request(
-        `${contentsUrl(path)}?ref=${DATA_BRANCH}`,
+        fresh(`${contentsUrl(path)}?ref=${DATA_BRANCH}`),
         {},
         { context: `чтение ${path}`, allow404: true },
       );
@@ -257,7 +268,7 @@ export function createGitHub({
     /** The most recent run of a workflow, or null when it never ran. */
     async latestRun(workflowFile) {
       const body = await request(
-        `${repoBase}/actions/workflows/${workflowFile}/runs?per_page=1`,
+        fresh(`${repoBase}/actions/workflows/${workflowFile}/runs?per_page=1`),
         {},
         { context: `статус ${workflowFile}` },
       );
@@ -278,7 +289,7 @@ export function createGitHub({
     /** Read a file from any branch, used for the workflow-run status file. */
     async readJsonOnBranch(path, branch) {
       const body = await request(
-        `${contentsUrl(path)}?ref=${branch}`,
+        fresh(`${contentsUrl(path)}?ref=${branch}`),
         {},
         { context: `чтение ${path}`, allow404: true },
       );
