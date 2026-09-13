@@ -383,7 +383,7 @@ export function createDigestsScreen(ctx) {
 function swipeRow(ctx, item) {
   const content = listRow({
     title: item.channel_title ?? "канал",
-    sub: periodLabel(item),
+    sub: [periodLabel(item), item.preset_name || null].filter(Boolean).join(" · "),
     meta: `${item.messages_used ?? 0} сообщ.`,
     chevron: true,
     onClick: () => ctx.navigate("digest", { id: item.id }),
@@ -710,17 +710,24 @@ export function createDigestDetail(ctx, digestId) {
     }
 
     node.append(
-      el("div", { class: "row row--between" }, [
-        el("div", {}, [
-          el("h1", { text: digest.channel_title ?? "дайджест" }),
-          el("p", { class: "small muted", text: periodLabel(digest) }),
+      el("div", {}, [
+        el("h1", { text: digest.channel_title ?? "дайджест" }),
+        el("div", { class: "row" }, [
+          // The style is how the model was asked to write; the chips below are only how
+          // much of the result is on screen. They used to share the words "краткий" and
+          // "полный", which is exactly how a reader ends up looking for an analytical
+          // digest and finding buttons that seem to deny it exists.
+          digest.preset_name
+            ? el("span", { class: "badge badge--quiet", text: digest.preset_name })
+            : el("span", { class: "badge badge--quiet", text: "стиль не записан" }),
+          el("span", { class: "small muted", text: periodLabel(digest) }),
         ]),
       ]),
       el("div", { class: "chips" }, [
         el("button", {
           class: `chip${mode === "brief" ? " chip--on" : ""}`,
           type: "button",
-          text: "Краткий",
+          text: "Тезисы",
           on: {
             click: () => {
               haptic("select");
@@ -732,7 +739,7 @@ export function createDigestDetail(ctx, digestId) {
         el("button", {
           class: `chip${mode === "full" ? " chip--on" : ""}`,
           type: "button",
-          text: "Полный",
+          text: "Весь текст",
           on: {
             click: () => {
               haptic("select");
@@ -742,6 +749,13 @@ export function createDigestDetail(ctx, digestId) {
           },
         }),
       ]),
+      el("p", {
+        class: "small muted",
+        text:
+          mode === "brief"
+            ? "По два тезиса на тему. Стиль задаётся при сборке дайджеста."
+            : "Дайджест целиком, как его собрала модель.",
+      }),
       // The cost and token counts are not shown here: the reader opened a digest to read
       // it, and the money is accounted for in settings.
       el("div", { class: "card" }, [article]),

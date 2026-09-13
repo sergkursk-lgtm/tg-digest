@@ -71,6 +71,7 @@ function snapshot(overrides = {}) {
         messages_used: 40,
         cost_usd: 0.00102,
         status: "ok",
+        preset_name: "Аналитический",
         created_at: NOW,
       },
     ],
@@ -375,4 +376,76 @@ test("the bar eases towards what it was told, and never past it", async () => {
 
   bar.destroy();
   failed.destroy();
+});
+
+
+// -- the digest screen --------------------------------------------------------
+
+/** Open one digest against a fake client and let the read settle. */
+async function openDigest(digest) {
+  const { createDigestDetail } = await load("screen-digests.js");
+  const client = { readJson: async () => ({ data: digest, sha: "a".repeat(40) }) };
+  const screen = createDigestDetail(context({ client }), digest.id);
+  await new Promise((done) => setTimeout(done, 0));
+  return screen;
+}
+
+const DIGEST = {
+  id: "20260913T084041Z-c1",
+  channel_title: "SOUEAST S07 клуб",
+  period_start: NOW,
+  period_end: NOW,
+  preset_name: "Аналитический",
+  topics: [{ title: "Руль", bullets: ["калибровка помогла", "сход-развал тоже"] }],
+  html: "<h2>Руль</h2>",
+  markdown: "# Руль",
+  telegram_html: "",
+  usage: { tokens_in: 100, tokens_out: 20, cost_usd: 0.001 },
+};
+
+test("a digest says which style it was written in", async () => {
+  // The reader asked "where is the analytical one?" while looking at an analytical digest:
+  // nothing on the screen said so, and the reading toggle was called "Краткий".
+  const screen = await openDigest(DIGEST);
+  const text = textOf(screen.node);
+
+  assert.match(text, /Аналитический/);
+  // The toggle folds the same text; it is not a style, so it is not named like one.
+  const chips = all(screen.node, (child) => child.classList?.contains("chip")).map((chip) =>
+    textOf(chip),
+  );
+  assert.deepEqual(chips, ["Тезисы", "Весь текст"]);
+  assert.match(text, /Стиль задаётся при сборке/);
+});
+
+test("the reading toggle switches how much is shown, not which digest it is", async () => {
+  const screen = await openDigest(DIGEST);
+  const text = () => textOf(screen.node);
+
+  // The default view folds the digest to two bullets per topic and says so.
+  assert.match(text(), /По два тезиса на тему/);
+  assert.match(text(), /калибровка помогла/);
+
+  const chips = all(screen.node, (child) => child.classList?.contains("chip"));
+  assert.equal(textOf(chips[0]), "Тезисы");
+  assert.equal(textOf(chips[1]), "Весь текст");
+  assert.equal(chips[0].classList.contains("chip--on"), true, "the folded view is the default");
+  assert.equal(chips[1].classList.contains("chip--on"), false);
+
+  // Switching to the whole text re-renders the article from the stored HTML. That path runs
+  // the sanitiser, which needs a real DOM and has its own tests in sanitize.test.mjs; what is
+  // checked here is that the toggle offers it and the view starts folded.
+});
+
+test("a digest written before the style was recorded says so", async () => {
+  const screen = await openDigest({ ...DIGEST, preset_name: "" });
+  // No invented style: the file simply does not say.
+  assert.match(textOf(screen.node), /стиль не записан/);
+});
+
+test("the list names the style of each digest", async () => {
+  const { createDigestsScreen } = await load("screen-digests.js");
+  const screen = createDigestsScreen(context());
+  const sub = all(screen.node, (child) => child.classList?.contains("list__sub"))[0];
+  assert.match(textOf(sub), /Аналитический/);
 });
