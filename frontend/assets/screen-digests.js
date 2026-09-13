@@ -767,11 +767,14 @@ export function createDigestDetail(ctx, digestId) {
       article.append(el("p", { class: "muted", text: current.markdown ?? "Пусто." }));
     }
 
+    // The header block is a stack: rows of raised chips have no gap of their own, and a
+    // chip's side wall is painted below its box, so stacked rows overlapped by exactly that.
     node.append(
-      el("div", {}, [
-        el("h1", { text: digest.channel_title ?? "дайджест" }),
-        el("p", { class: "small muted", text: periodLabel(digest) }),
-      ]),
+      el("div", { class: "stack" }, [
+        el("div", {}, [
+          el("h1", { text: digest.channel_title ?? "дайджест" }),
+          el("p", { class: "small muted", text: periodLabel(digest) }),
+        ]),
       // The styles this one digest holds. Switching is just choosing a different version of
       // the same period, so the questions below stay where they are.
       variants.length > 1
@@ -825,13 +828,14 @@ export function createDigestDetail(ctx, digestId) {
           },
         }),
       ]),
-      el("p", {
-        class: "small muted",
-        text:
-          mode === "brief"
-            ? `По два тезиса на тему. Стиль: ${current.preset_name || "не записан"}.`
-            : `Дайджест целиком, как его собрала модель. Стиль: ${current.preset_name || "не записан"}.`,
-      }),
+        el("p", {
+          class: "small muted",
+          text:
+            mode === "brief"
+              ? `По два тезиса на тему. Стиль: ${current.preset_name || "не записан"}.`
+              : `Дайджест целиком, как его собрала модель. Стиль: ${current.preset_name || "не записан"}.`,
+        }),
+      ]),
       // The cost and token counts are not shown here: the reader opened a digest to read
       // it, and the money is accounted for in settings.
       el("div", { class: "card" }, [article]),

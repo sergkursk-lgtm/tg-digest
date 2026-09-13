@@ -248,3 +248,21 @@ test("full-width row primitives say so", () => {
     assert.match(rule, /width:\s*100%/, `${selector} must fill its container`);
   }
 });
+
+test("two rows of raised chips do not sit on each other", () => {
+  // A chip's side wall is painted below its box and takes no space, so adjacent rows
+  // overlapped by exactly that in the digest header.
+  const at = CSS.indexOf(".chips + .chips");
+  assert.notEqual(at, -1, "adjacent chip rows need vertical space");
+  const rule = CSS.slice(at, CSS.indexOf("}", at));
+  assert.match(rule, /margin-top:\s*var\(--s/);
+});
+
+test("blocks on a screen are not flush against each other", () => {
+  // A screen is a plain block container: without this its cards touch, and a chip row's
+  // side wall lands on whatever follows it.
+  const at = CSS.indexOf(".screen > * + *");
+  assert.notEqual(at, -1, "a screen needs a vertical rhythm");
+  const rule = CSS.slice(at, CSS.indexOf("}", at));
+  assert.match(rule, /margin-top:\s*var\(--s/);
+});

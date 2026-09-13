@@ -278,6 +278,12 @@ a {
   padding-bottom: var(--s5);
 }
 
+/* A screen is a plain block container, so its blocks would otherwise sit flush against one
+   another — two bordered cards with rounded corners and no gap read as one odd shape. */
+.screen > * + * {
+  margin-top: var(--s4);
+}
+
 /* A screen with a floating action needs room for it above the navigation. */
 .screen--with-fab {
   padding-bottom: calc(58px + 80px + var(--tg-inset-bottom, 0px));
@@ -814,6 +820,13 @@ a {
     0 var(--lift) 0 var(--edge-accent),
     var(--shadow-1),
     inset 0 1px 0 rgb(255 255 255 / 28%);
+}
+
+/* Raised chips paint a side wall below their box, so two rows in a row touch: nothing in
+   the flow reserves room for a shadow. A stack is the right fix where the markup allows it;
+   this is the safety net for a row that follows a row. */
+.chips + .chips {
+  margin-top: var(--s4);
 }
 
 .chip--on:active,
