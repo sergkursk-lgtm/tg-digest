@@ -15,6 +15,7 @@ import {
   formatMoment,
   formatTokens,
   formatUsd,
+  isNewerThan,
   isSetupComplete,
   monthKey,
   nextStepId,
@@ -164,6 +165,19 @@ test("usageSummary survives a missing usage file and settings", () => {
   assert.equal(summary.digests, 0);
   assert.equal(summary.limitUsd, 5);
   assert.equal(summary.status, "ok");
+});
+
+test("isNewerThan ignores a previous attempt's state", () => {
+  const started = Date.parse("2026-09-13T07:50:00Z");
+  assert.equal(isNewerThan({ updated_at: "2026-09-13T07:44:55+00:00" }, started), false);
+  assert.equal(isNewerThan({ updated_at: "2026-09-13T07:50:01+00:00" }, started), true);
+  assert.equal(isNewerThan({ updated_at: "2026-09-13T07:50:00.000Z" }, started), true);
+});
+
+test("isNewerThan treats unusable timestamps as stale", () => {
+  assert.equal(isNewerThan(null, 0), false);
+  assert.equal(isNewerThan({}, 0), false);
+  assert.equal(isNewerThan({ updated_at: "not a date" }, 0), false);
 });
 
 test("formatters render Russian-friendly strings", () => {

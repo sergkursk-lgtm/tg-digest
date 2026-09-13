@@ -190,6 +190,21 @@ export function usageSummary(usageMonth, settings) {
   };
 }
 
+/**
+ * True when a state file was written at or after ``sinceMs``.
+ *
+ * Polls must ignore anything older than the action that started them: a previous
+ * attempt's failure is still on disk when a new one begins, and reporting it would show
+ * the user an error for a request that has not finished yet.
+ *
+ * @param {object|null} state contents of a run or login state file
+ * @param {number} sinceMs epoch milliseconds captured before the action started
+ */
+export function isNewerThan(state, sinceMs) {
+  const stamp = state?.updated_at ? Date.parse(state.updated_at) : Number.NaN;
+  return Number.isFinite(stamp) && stamp >= sinceMs;
+}
+
 /** Format a number with thin spaces, for the footer. */
 export function formatTokens(value) {
   return new Intl.NumberFormat("ru-RU").format(Number(value ?? 0));

@@ -22,6 +22,7 @@ import {
   DEEPSEEK_SECRET,
   PATHS,
   TELEGRAM_SECRETS,
+  isNewerThan,
   loadSnapshot,
   setupSteps,
 } from "./state.js";
@@ -446,13 +447,18 @@ export function createWizard({ mount, context, nacl, refresh, onComplete, client
                 await saveLoginState(patch);
 
                 setStatus(status, "Запускаю отправку кода…");
+                const requestedAt = Date.now();
                 await context.client.dispatch(LOGIN_WORKFLOW, { step: "send-code" });
                 const sent = await pollUntil(async () => {
-                  const state = await context.client.readJson(PATHS.loginState);
-                  if (state?.data?.step === "failed") {
-                    throw new Error(state.data.error ?? "Telegram отказал");
+                  const data = (await context.client.readJson(PATHS.loginState))?.data;
+                  // Ignore the previous attempt's outcome, which is still on disk.
+                  if (!isNewerThan(data, requestedAt)) {
+                    return null;
                   }
-                  return state?.data?.step === "code_sent";
+                  if (data.step === "failed") {
+                    throw new Error(data.error ?? "Telegram отказал");
+                  }
+                  return data.step === "code_sent";
                 });
 
                 if (!sent) {
@@ -518,15 +524,23 @@ export function createWizard({ mount, context, nacl, refresh, onComplete, client
                   password: password.input.value,
                 });
                 setStatus(status, "Отправляю код в Telegram…");
+                const submittedAt = Date.now();
                 await context.client.dispatch(LOGIN_WORKFLOW, { step: "sign-in" });
 
                 const finished = await pollUntil(async () => {
-                  const state = await context.client.readJson(PATHS.loginState);
-                  const step = state?.data?.step;
-                  if (step === "failed") {
-                    throw new Error(state.data.error ?? "вход не удался");
+                  const data = (await context.client.readJson(PATHS.loginState))?.data;
+                  if (!isNewerThan(data, submittedAt)) {
+                    return null;
                   }
-                  return step === "authorized" ? state.data : null;
+                  if (data.step === "authorized") {
+                    return data;
+                  }
+                  // A wrong code leaves the state retryable but sets the reason, so the
+                  // same code request can be used again.
+                  if (data.step === "failed" || data.error) {
+                    throw new Error(data.error ?? "вход не удался");
+                  }
+                  return null;
                 });
 
                 if (!finished) {
