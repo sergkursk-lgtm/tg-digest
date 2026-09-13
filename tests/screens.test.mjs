@@ -1,0 +1,267 @@
+/**
+ * Tests for the screens themselves, on the same DOM stub the primitives use.
+ *
+ * The screens are the part that only existed as pixels before: a runner cannot click
+ * through them, so what is asserted here is structure — that a missing credential produces
+ * a row with a way to fix it, that a selected channel renders as selected, that a secret is
+ * never rendered in the clear.
+ */
+
+import assert from "node:assert/strict";
+import { test } from "node:test";
+
+import { withDom } from "./helpers/fake-dom.mjs";
+
+/** Import a screen module against a fresh stub document. */
+async function load(name) {
+  const { module } = await withDom(`../frontend/assets/${name}`);
+  return module;
+}
+
+/** The text of a node, including descendants. */
+function textOf(node) {
+  const parts = [node.textContent ?? ""];
+  for (const child of node.children ?? []) {
+    if (child && typeof child === "object" && "children" in child) {
+      parts.push(textOf(child));
+    }
+  }
+  return parts.join(" ").replace(/\s+/g, " ").trim();
+}
+
+/** Every descendant matching a predicate. */
+function all(node, predicate) {
+  const found = [];
+  const walk = (current) => {
+    for (const child of current.children ?? []) {
+      if (!child || typeof child !== "object") continue;
+      if (predicate(child)) found.push(child);
+      walk(child);
+    }
+  };
+  walk(node);
+  return found;
+}
+
+const NOW = "2026-09-13T08:40:41+00:00";
+
+/** A snapshot of a fully configured project. */
+function snapshot(overrides = {}) {
+  return {
+    settings: {
+      values: {
+        telegram: { bot_token: "123456:secret-token", chat_id: "211254823" },
+        budget: { monthly_usd: 5, warn_ratio: 0.8 },
+      },
+    },
+    login: { step: "authorized", api_id: 1, api_hash: "h", phone: "+70000000000" },
+    channels: [{ id: 1, tg_id: "-100", title: "Клуб", type: "forum", has_topics: true, default_period_hours: 24, summary_style_id: 1, username: "club" }],
+    presets: [
+      { id: 1, name: "Краткий", system_prompt_key: "summary_brief", is_default: 1 },
+      { id: 2, name: "Детальный", system_prompt_key: "summary_detailed", is_default: 0 },
+    ],
+    templates: [{ id: 1, name: "По умолчанию", grouping: "topics", sections: ["summary"], is_default: 1 }],
+    digests: [
+      {
+        id: "20260913T084041Z-c1",
+        channel_id: 1,
+        channel_title: "Клуб",
+        period_start: NOW,
+        period_end: NOW,
+        messages_used: 40,
+        cost_usd: 0.00102,
+        status: "ok",
+        created_at: NOW,
+      },
+    ],
+    usage: { totals: { digests: 1, questions: 2, tokens_in: 300, tokens_out: 100, cost_usd: 0.004 } },
+    dialogs: [
+      { id: -100, title: "Клуб", type: "forum", is_forum: true, username: "club" },
+      { id: -200, title: "Военная сводка", type: "channel", username: "war" },
+      { id: -300, title: "Личный чат", type: "user" },
+      { id: 777000, title: "Telegram", type: "user" },
+    ],
+    // The setup check is what tells the page which secrets exist; without its `secret ...`
+    // rows an otherwise finished project still looks like it is missing credentials.
+    setupRun: {
+      status: "ok",
+      updated_at: NOW,
+      finished_at: NOW,
+      steps: [
+        { name: "secret DEEPSEEK_API_KEY", status: "ok" },
+        { name: "secret TG_API_ID", status: "ok" },
+        { name: "secret TG_API_HASH", status: "ok" },
+        { name: "secret TG_STRING_SESSION", status: "ok" },
+      ],
+    },
+    month: "2026-09",
+    ...overrides,
+  };
+}
+
+/** The context the router hands to a screen. */
+function context(overrides = {}) {
+  return {
+    client: { owner: "sergkursk-lgtm", repo: "tg-digest-core" },
+    snapshot: snapshot(),
+    secretNames: [],
+    secretsReadable: true,
+    hasSecret: () => true,
+    navigate: () => {},
+    back: () => {},
+    refresh: async () => {},
+    currentTheme: () => "system",
+    setTheme: () => {},
+    onForgetToken: () => {},
+    finishOnboarding: () => {},
+    ...overrides,
+  };
+}
+
+// -- first run -----------------------------------------------------------------
+
+test("onboarding lists what is missing with a way to fix each item", async () => {
+  const { createOnboardingScreen } = await load("onboarding.js");
+  const bare = snapshot({
+    login: null,
+    channels: [],
+    usage: null,
+    setupRun: null, // no check has run, so nothing is known to be configured
+    settings: { values: { telegram: { bot_token: "", chat_id: "" } } },
+  });
+
+  const { node, chrome } = createOnboardingScreen(context({ snapshot: bare }));
+  const text = textOf(node);
+  assert.match(text, /Осталось настроить/);
+  assert.match(text, /Приложение Telegram/);
+  assert.match(text, /Ключ DeepSeek/);
+  assert.match(text, /Доставка в Telegram/);
+
+  const labels = all(node, (child) => child.tagName === "BUTTON").map((button) => textOf(button));
+  assert.ok(labels.some((label) => label.includes("Ввести ключ")));
+  assert.ok(labels.some((label) => label.includes("Выбрать каналы")));
+  // Onboarding has no tabs and no cost strip: there is nothing to navigate to yet.
+  assert.deepEqual(chrome, { tabs: false, footer: false });
+});
+
+test("a configured project is told it can start", async () => {
+  const { createOnboardingScreen } = await load("onboarding.js");
+  const { node } = createOnboardingScreen(context());
+  const labels = all(node, (child) => child.tagName === "BUTTON").map((button) => textOf(button));
+  assert.ok(labels.includes("Начать"));
+});
+
+// -- digests -------------------------------------------------------------------
+
+test("the digest list shows the spend line and one row per digest", async () => {
+  const { createDigestsScreen } = await load("screen-digests.js");
+  const screen = createDigestsScreen(context());
+  const text = textOf(screen.node);
+
+  assert.equal(screen.title, "Дайджесты");
+  assert.match(text, /Собрано: 1/);
+  // Tariff, tokens and spend replace the old footer strip.
+  assert.match(text, /Off-peak|Peak/);
+  assert.match(text, /300 токенов|400 токенов/);
+  assert.match(text, /\$0\.0040 из \$5\.0000/);
+  assert.match(text, /Клуб/);
+  assert.match(text, /40 сообщ\./);
+  // A floating "collect" button appears only when there is something to collect.
+  assert.ok(screen.floating, "a project with channels gets the floating button");
+});
+
+test("an empty project is offered the one useful action", async () => {
+  const { createDigestsScreen } = await load("screen-digests.js");
+  const empty = createDigestsScreen(context({ snapshot: snapshot({ digests: [], channels: [] }) }));
+  assert.match(textOf(empty.node), /Дайджестов пока нет/);
+  assert.equal(empty.floating, null, "nothing to collect from");
+});
+
+test("opening a digest renders the brief view and the ask box", async () => {
+  const { createDigestDetail } = await load("screen-digests.js");
+  const digest = {
+    id: "20260913T084041Z-c1",
+    channel_title: "Клуб",
+    period_start: NOW,
+    period_end: NOW,
+    topics: [{ title: "Руль", bullets: ["калибровка помогла", "сход-развал тоже"] }],
+    html: "<h2>Руль</h2>",
+    markdown: "# Руль",
+    telegram_html: "<b>Руль</b>",
+    usage: { tokens_in: 100, tokens_out: 20, cost_usd: 0.001 },
+  };
+  const client = { readJson: async () => ({ data: digest, sha: "a".repeat(40) }) };
+
+  const screen = createDigestDetail(context({ client }), digest.id);
+  assert.equal(screen.back, true);
+  // The article is read asynchronously; let it settle.
+  await new Promise((done) => setTimeout(done, 0));
+
+  const text = textOf(screen.node);
+  assert.match(text, /SOUEAST|Клуб/);
+  assert.match(text, /калибровка помогла/);
+  assert.match(text, /Спросить у ИИ/);
+  assert.match(text, /Скачать \.md/);
+});
+
+// -- channels ------------------------------------------------------------------
+
+test("the channel list marks the selected chats and hides private ones", async () => {
+  const { createChannelsScreen } = await load("screen-channels.js");
+  const { node } = createChannelsScreen(context());
+  const text = textOf(node);
+
+  assert.match(text, /Клуб/);
+  assert.match(text, /Военная сводка/);
+  // A digest is not for private conversations or Telegram's own service chat.
+  assert.ok(!text.includes("Личный чат"));
+  assert.ok(!/Telegram\b/.test(text.replace("Telegram-канал", "")));
+
+  const pressed = all(node, (child) => child.getAttribute?.("aria-pressed") === "true");
+  assert.equal(pressed.length, 1, "only the configured channel is on");
+  assert.match(textOf(pressed[0]), /Клуб/);
+});
+
+test("channels are grouped by kind", async () => {
+  const { createChannelsScreen } = await load("screen-channels.js");
+  const { node } = createChannelsScreen(context());
+  const headings = all(node, (child) => child.tagName === "H3").map((child) => textOf(child));
+  assert.ok(headings.includes("Форумы"));
+  assert.ok(headings.includes("Каналы"));
+});
+
+// -- settings ------------------------------------------------------------------
+
+test("settings shows one section per concern, with secrets kept out of sight", async () => {
+  const { createSettingsScreen } = await load("screen-settings.js");
+  const { node } = createSettingsScreen(context());
+  const text = textOf(node);
+
+  for (const section of ["Статус", "Аккаунт Telegram", "DeepSeek", "Доставка в Telegram", "Бюджет на месяц", "Лимиты запусков", "Оформление", "Опасное"]) {
+    assert.ok(text.includes(section), `missing the "${section}" section`);
+  }
+
+  // The bot token is never rendered as text, only into a password field.
+  assert.ok(!text.includes("123456:secret-token"), "the bot token must not appear in the markup");
+  const password = all(node, (child) => child.getAttribute?.("type") === "password");
+  assert.ok(password.length >= 2, "the token and the DeepSeek key are password fields");
+
+  // Templates and statistics are collapsed, not competing for the root.
+  const details = all(node, (child) => child.tagName === "DETAILS");
+  assert.equal(details.length, 2);
+});
+
+test("questions appear in the statistics only once there are some", async () => {
+  const { createSettingsScreen } = await load("screen-settings.js");
+  const withQuestions = textOf(createSettingsScreen(context()).node);
+  assert.match(withQuestions, /Вопросов к ИИ/);
+
+  const without = textOf(
+    createSettingsScreen(
+      context({ snapshot: snapshot({ usage: { totals: { digests: 1, cost_usd: 0.001 } } }) }),
+    ).node,
+  );
+  assert.ok(!without.includes("Вопросов к ИИ"));
+  // An older usage file simply has no questions field.
+  assert.match(without, /Дайджестов/);
+});
