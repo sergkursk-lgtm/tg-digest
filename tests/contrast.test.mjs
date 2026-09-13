@@ -125,13 +125,48 @@ test("press feedback is defined and fast enough to feel immediate", () => {
   const ms = Number(press.replace("ms", ""));
   assert.ok(ms > 0 && ms <= 120, `--dur-press should be 1-120ms, got ${press}`);
 
-  // Every tappable primitive compresses on :active.
-  for (const selector of [".btn:active", ".fab:active", ".chip:active", ".numpad__key:active"]) {
-    const at = CSS.indexOf(selector);
+  // Buttons are objects: pressing one has to move it.
+  for (const selector of [".btn", ".fab", ".chip", ".numpad__key"]) {
+    const at = CSS.indexOf(`${selector}:active`);
     assert.notEqual(at, -1, `${selector} has no press state`);
     const rule = CSS.slice(at, CSS.indexOf("}", at));
-    assert.match(rule, /transform:\s*scale\(/, `${selector} does not scale on press`);
+    assert.match(rule, /transform:\s*[^;]*scale\(/, `${selector} does not scale on press`);
   }
+
+  // Rows are surfaces, not objects: a background flash is the right feedback there, and
+  // scaling a full-width row looks like a mistake.
+  for (const selector of [".list__row", ".switchrow"]) {
+    const at = CSS.indexOf(`${selector}:active`);
+    assert.notEqual(at, -1, `${selector} has no press state`);
+    const rule = CSS.slice(at, CSS.indexOf("}", at));
+    assert.match(rule, /background/, `${selector} shows no press feedback`);
+  }
+});
+
+test("button-like primitives centre their own label", () => {
+  // The button reset sets `text-align: inherit`, so a primitive that relies on the user
+  // agent to centre its text ends up with the label pinned to the left edge. That is how
+  // the PIN keypad first rendered: the digits sat against the left side of every key.
+  for (const selector of [".btn", ".chip", ".numpad__key", ".tabbar__item", ".fab"]) {
+    const at = CSS.indexOf(`${selector} {`);
+    assert.notEqual(at, -1, `${selector} is missing`);
+    const rule = CSS.slice(at, CSS.indexOf("}", at));
+    assert.match(rule, /display:\s*(inline-)?flex/, `${selector} must lay its label out`);
+    assert.match(rule, /align-items:\s*center/, `${selector} must centre vertically`);
+    assert.match(rule, /justify-content:\s*center/, `${selector} must centre horizontally`);
+  }
+});
+
+test("a keypad key has thickness and sinks when pressed", () => {
+  const at = CSS.indexOf(".numpad__key {");
+  const rule = CSS.slice(at, CSS.indexOf("}", at));
+  // A solid bottom edge under a soft shadow is what makes a key look raised.
+  assert.match(rule, /box-shadow:[^;]*0 2px 0/, "the key has no bottom edge");
+
+  const pressedAt = CSS.indexOf(".numpad__key:active");
+  const pressed = CSS.slice(pressedAt, CSS.indexOf("}", pressedAt));
+  assert.match(pressed, /translateY\(2px\)/, "pressing the key must move it down");
+  assert.match(pressed, /box-shadow:\s*0 0 0/, "the bottom edge must disappear under the key");
 });
 
 test("only compositor-friendly properties are animated", () => {

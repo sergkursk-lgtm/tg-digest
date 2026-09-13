@@ -385,6 +385,7 @@ a {
   z-index: 6;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--s2);
   min-height: 52px;
   padding: 0 var(--s5);
@@ -649,6 +650,9 @@ a {
 }
 
 .chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 40px;
   padding: 0 var(--s4);
   border: 1px solid var(--border);
@@ -799,26 +803,42 @@ a {
 }
 
 .numpad__key {
+  /* The digit has to be centred by the layout, not by the user agent: the button reset
+     above sets `text-align: inherit`, and a block-level key then pins its label to the
+     left edge. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-height: 64px;
+  padding: 0;
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   background: var(--surface);
   color: var(--text);
-  font: inherit;
   font-size: 24px;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: var(--shadow-1);
+  /* A key looks like a key when it has thickness: a solid bottom edge under a soft
+     shadow reads as height, which a flat hairline border does not. */
+  box-shadow:
+    0 2px 0 var(--border-strong),
+    var(--shadow-1);
   transition:
     transform var(--dur-press) var(--ease-out),
     background-color var(--dur-fast) var(--ease-out),
-    box-shadow var(--dur-fast) var(--ease-out);
+    box-shadow var(--dur-press) var(--ease-out);
 }
 
-.numpad__key:active {
-  transform: scale(0.96);
+/* Pressing sinks the key onto the surface: it travels down by its own thickness and the
+   edge disappears under it. */
+.numpad__key:active:not(:disabled) {
+  transform: translateY(2px) scale(0.99);
   background: var(--surface-2);
-  box-shadow: none;
+  box-shadow: 0 0 0 var(--border-strong);
+}
+
+.numpad__key:disabled {
+  opacity: 0.55;
 }
 
 .numpad__key--muted {
