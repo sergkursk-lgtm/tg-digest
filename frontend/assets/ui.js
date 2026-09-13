@@ -386,6 +386,16 @@ export function actionButton({ action, busyLabel = "Работаю…", ...optio
   return node;
 }
 
+/**
+ * The round tinted icon that opens a row.
+ *
+ * @param {string} name icon name
+ * @param {string} [tone] "" | "quiet" | "ok" | "warn" | "danger"
+ */
+export function iconBadge(name, tone = "") {
+  return el("span", { class: `icon-badge${tone ? ` icon-badge--${tone}` : ""}` }, [icon(name, 20)]);
+}
+
 // -- structure -----------------------------------------------------------------
 
 /**
@@ -400,10 +410,11 @@ export function screen(children) {
  * A card with an optional title and a "clear the section" header row.
  * @param {object} options
  */
-export function card({ title, subtitle, actions, children, flush = false } = {}) {
+export function card({ title, subtitle, actions, children, flush = false, icon: iconName } = {}) {
   const head =
     title || actions
       ? el("div", { class: "card__head" }, [
+          iconName ? iconBadge(iconName) : null,
           title ? el("h2", { class: "card__title", text: title }) : null,
           ...(actions ?? []),
         ])
@@ -425,12 +436,13 @@ export function card({ title, subtitle, actions, children, flush = false } = {})
  * @param {Node} [options.trailing]
  * @param {() => void} [options.onClick]
  */
-export function listRow({ title, sub, meta, chevron = false, trailing, onClick } = {}) {
+export function listRow({ title, sub, meta, chevron = false, trailing, onClick, icon: iconName, tone = "" } = {}) {
   const body = el("span", { class: "list__body" }, [
     el("span", { class: "list__title", text: title }),
     sub ? el("span", { class: "list__sub", text: sub }) : null,
   ]);
   const children = [
+    iconName ? iconBadge(iconName, tone) : null,
     body,
     meta ? el("span", { class: "list__meta", text: meta }) : null,
     trailing ?? null,
@@ -474,7 +486,7 @@ export function listRow({ title, sub, meta, chevron = false, trailing, onClick }
  * @param {boolean} options.on
  * @param {(next: boolean) => void|Promise<any>} options.onToggle
  */
-export function switchRow({ title, sub, on, onToggle }) {
+export function switchRow({ title, sub, on, onToggle, icon: iconName, tone = "" }) {
   const track = el("span", { class: `switch${on ? " switch--on" : ""}` });
   let state = Boolean(on);
 
@@ -523,6 +535,7 @@ export function switchRow({ title, sub, on, onToggle }) {
       },
     },
     [
+      iconName ? iconBadge(iconName, tone) : null,
       el("span", { class: "switchrow__body" }, [
         el("span", { class: "switchrow__title", text: title }),
         sub ? el("span", { class: "switchrow__sub", text: sub }) : null,

@@ -16,33 +16,39 @@
 :root {
   color-scheme: light;
 
-  /* surfaces */
-  --bg: #f5f6f8;
+  /* The palette comes from the reference the reader sent: a very light lavender page, deep
+     navy type, a vivid indigo for anything that acts, and one dark navy panel per screen
+     for the number that matters. Their captions are a pale blue-grey (#a3aed0) that sits at
+     2.2:1 on white — unreadable as text — so the muted colour here is darkened to the first
+     value that passes 4.5:1 while still reading as "secondary" next to the navy. */
+  --bg: #f4f7fe;
   --surface: #ffffff;
-  --surface-2: #eef0f4;
-  --border: #e3e6ec;
-  --border-strong: #d3d8e2;
-  /* Boundaries that are the *only* thing identifying a control: an input box, a switch track,
-   * an empty PIN dot. Kept at 3:1 against both surfaces (WCAG 1.4.11). */
-  --control-edge: #848b98;
+  --surface-2: #eef2fb;
+  --border: #e6ebf8;
+  --border-strong: #d6ddf0;
+  /* Boundaries that are the *only* thing identifying a control: an input box, a switch
+     track, an empty PIN dot. Kept at 3:1 against both surfaces (WCAG 1.4.11). */
+  --control-edge: #848dae;
 
-  /* text */
-  --text: #14161b;
-  --text-muted: #5f6672;
+  --text: #1b2559;
+  --text-muted: #5f6c93;
 
-  /* brand and states */
-  --accent: #2563eb;
-  --accent-hover: #1d4fd7;
+  --accent: #4318ff;
+  --accent-hover: #3311cc;
   --accent-ink: #ffffff;
-  --accent-soft: #e8efff;
-  --ok: #0b7a4b;
-  --ok-soft: #e6f5ee;
-  --warn: #9a5b06;
+  --accent-soft: #ece7ff;
+  --ok: #0b7a5b;
+  --ok-soft: #e6faf3;
+  --warn: #a15205;
   --warn-soft: #fdf1e0;
-  --danger: #c13515;
+  --danger: #c02116;
   --danger-soft: #fdece8;
 
-  /* spacing scale */
+  /* The dark panel that carries one number per screen. */
+  --hero: #1b2559;
+  --hero-ink: #ffffff;
+  --hero-muted: #a3aed0;
+
   --s1: 4px;
   --s2: 8px;
   --s3: 12px;
@@ -50,26 +56,26 @@
   --s5: 24px;
   --s6: 32px;
 
-  /* radii */
-  --r-sm: 8px;
-  --r-md: 12px;
-  --r-lg: 16px;
-  --r-xl: 24px;
+  /* Generous radii: the reference's cards are much rounder than a default interface. */
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 22px;
+  --r-xl: 28px;
   --r-full: 999px;
 
-  /* elevation: soft and low, the way a light minimal interface reads */
-  --shadow-1: 0 1px 2px rgb(16 24 40 / 5%), 0 1px 3px rgb(16 24 40 / 4%);
-  --shadow-2: 0 2px 8px rgb(16 24 40 / 6%), 0 12px 32px rgb(16 24 40 / 10%);
+  /* Soft, wide, blue-tinted shadows rather than grey ones. */
+  --shadow-1: 0 6px 18px rgb(112 144 176 / 10%);
+  --shadow-2: 0 18px 40px rgb(112 144 176 / 18%);
+  --shadow-hero: 0 18px 40px rgb(27 37 89 / 24%);
 
-  /* Buttons are objects, not flat rectangles: they stand on a solid side wall and press
-     down into it. `--lift` is that wall's height, and it is the distance a press travels. */
-  --lift: 3px;
-  --edge: #c6ccd8;
-  --edge-accent: #1c4ed8;
-  --edge-danger: #9e2b11;
-  --highlight: rgb(255 255 255 / 88%);
+  /* Buttons stand on a side wall and press down into it. Two pixels rather than three:
+     the reference's controls are flatter than the interface this replaces. */
+  --lift: 2px;
+  --edge: #d6ddf0;
+  --edge-accent: #3311cc;
+  --edge-danger: #8f1810;
+  --highlight: rgb(255 255 255 / 90%);
 
-  /* motion */
   --dur-press: 90ms;
   --dur-release: 200ms;
   --dur-fast: 140ms;
@@ -79,7 +85,6 @@
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
   --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
 
-  /* the smallest comfortable target for a thumb */
   --tap: 48px;
 
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial,
@@ -90,34 +95,38 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #0d0f13;
-  --surface: #16191f;
-  --surface-2: #1e222a;
-  --border: #2a2f39;
-  --border-strong: #3a4150;
-  --control-edge: #6b7484;
+  --bg: #0b1437;
+  --surface: #111c44;
+  --surface-2: #1b2559;
+  --border: #1f2b5c;
+  --border-strong: #2b3674;
+  --control-edge: #5462bb;
 
-  --text: #e9ebef;
-  --text-muted: #9ba3b0;
+  --text: #ffffff;
+  --text-muted: #a3aed0;
 
-  --accent: #6e9bff;
-  --accent-hover: #8bb0ff;
-  --accent-ink: #0b0d11;
-  --accent-soft: #1b2436;
-  --ok: #4ec48a;
-  --ok-soft: #14261e;
-  --warn: #e0a458;
-  --warn-soft: #2a2114;
-  --danger: #ff8a75;
-  --danger-soft: #2d1a17;
+  --accent: #9b81ff;
+  --accent-hover: #b09bff;
+  --accent-ink: #0b1437;
+  --accent-soft: #241a4d;
+  --ok: #4ade9f;
+  --ok-soft: #123326;
+  --warn: #ffb86b;
+  --warn-soft: #33260f;
+  --danger: #ff8f7a;
+  --danger-soft: #3a1a14;
 
-  --shadow-1: 0 1px 2px rgb(0 0 0 / 40%);
-  --shadow-2: 0 2px 8px rgb(0 0 0 / 45%), 0 12px 32px rgb(0 0 0 / 45%);
+  --hero: #1b2559;
+  --hero-ink: #ffffff;
+  --hero-muted: #a3aed0;
 
-  --lift: 3px;
-  --edge: #333a46;
-  --edge-accent: #4a76e0;
-  --edge-danger: #c96a55;
+  --shadow-1: 0 6px 18px rgb(0 0 0 / 28%);
+  --shadow-2: 0 18px 40px rgb(0 0 0 / 40%);
+  --shadow-hero: 0 18px 40px rgb(0 0 0 / 40%);
+
+  --edge: #2b3674;
+  --edge-accent: #7b5cff;
+  --edge-danger: #b3573f;
   --highlight: rgb(255 255 255 / 8%);
 }
 
@@ -252,9 +261,11 @@ a {
   gap: var(--s3);
   padding: var(--s3) var(--s4);
   padding-top: calc(var(--s3) + var(--tg-inset-top, 0px));
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: saturate(1.6) blur(12px);
-  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter: saturate(1.6) blur(14px);
+  /* A hairline would cut the page in two; the reference lets the header float. */
+  border-bottom: none;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 60%, transparent);
 }
 
 .appbar__title {
@@ -495,7 +506,7 @@ a {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
-  padding: var(--s4);
+  padding: var(--s4) var(--s4) var(--s4);
   box-shadow: var(--shadow-1);
 }
 
@@ -527,7 +538,7 @@ a {
   display: flex;
   align-items: center;
   gap: var(--s3);
-  min-height: var(--tap);
+  min-height: 64px;
   padding: var(--s3) var(--s4);
   border-bottom: 1px solid var(--border);
   text-align: left;
@@ -556,12 +567,12 @@ a {
   min-width: 0;
 }
 
+/* A channel name is not predictable in length, and it sits next to an icon badge now, so
+   it wraps rather than being cut: "КУРСКИЙ БОМО…" is not a name anybody recognises. */
 .list__title {
   display: block;
   font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 /* The subtitle wraps instead of truncating: it carries the period a digest covers, and a
@@ -587,6 +598,100 @@ a {
 .chev {
   color: var(--text-muted);
   flex: none;
+}
+
+/* The round tinted icon that opens every row in the reference: a soft square of the accent
+   colour with the glyph inside it. */
+.icon-badge {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.icon-badge--quiet {
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+.icon-badge--ok { background: var(--ok-soft); color: var(--ok); }
+.icon-badge--warn { background: var(--warn-soft); color: var(--warn); }
+.icon-badge--danger { background: var(--danger-soft); color: var(--danger); }
+
+/* -- the dark panel and the small stat tiles --------------------------------- */
+
+/* One dark panel per screen, carrying the number that matters — the reference's hero. */
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  padding: var(--s5) var(--s4);
+  border-radius: var(--r-lg);
+  background: var(--hero);
+  color: var(--hero-ink);
+  box-shadow: var(--shadow-hero);
+}
+
+.hero__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--hero-muted);
+}
+
+.hero__value {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  /* A long number must not push the panel wider than the screen. */
+  overflow-wrap: anywhere;
+}
+
+.hero__note {
+  font-size: 13px;
+  color: var(--hero-muted);
+}
+
+.hero__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
+/* Two columns of small white tiles: a muted label above a bold value. */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s3);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  min-width: 0;
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.stat__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.stat__value {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
 }
 
 /* -- swipe to delete -------------------------------------------------------- */
@@ -656,7 +761,7 @@ a {
 .input {
   width: 100%;
   min-height: var(--tap);
-  padding: var(--s3);
+  padding: var(--s3) var(--s4);
   border: 1px solid var(--control-edge);
   border-radius: var(--r-md);
   background: var(--surface);
@@ -845,9 +950,11 @@ a {
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  backdrop-filter: saturate(1.6) blur(12px);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: saturate(1.6) blur(14px);
   border-top: 1px solid var(--border);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  box-shadow: 0 -8px 24px rgb(112 144 176 / 12%);
   padding-bottom: var(--tg-inset-bottom, 0px);
 }
 
@@ -1040,6 +1147,8 @@ a {
   padding-bottom: calc(var(--s5) + var(--tg-inset-bottom, 0px));
   background: var(--surface);
   border-radius: var(--r-xl) var(--r-xl) 0 0;
+  border: 1px solid var(--border);
+  border-bottom: none;
   box-shadow: var(--shadow-2);
   transform: translateY(102%);
   transition: transform var(--dur-base) var(--ease-out);

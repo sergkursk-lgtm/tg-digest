@@ -78,7 +78,13 @@ function snapshot(overrides = {}) {
         created_at: NOW,
       },
     ],
-    usage: { totals: { digests: 1, questions: 2, tokens_in: 300, tokens_out: 100, cost_usd: 0.004 } },
+    usage: {
+      totals: { digests: 1, questions: 2, tokens_in: 300, tokens_out: 100, cost_usd: 0.004 },
+      // One day, so the day-by-day table is rendered rather than skipped.
+      items: [
+        { digest_id: "d1", created_at: NOW, tokens_in: 300, tokens_out: 100, cost_usd: 0.004 },
+      ],
+    },
     dialogs: [
       { id: -100, title: "Клуб", type: "forum", is_forum: true, username: "club" },
       { id: -200, title: "Военная сводка", type: "channel", username: "war" },
@@ -163,7 +169,14 @@ test("the digest list is a list, with no spend line", async () => {
   const text = textOf(screen.node);
 
   assert.equal(screen.title, "Дайджесты");
-  assert.match(text, /Собрано: 1/);
+
+  // The one number that matters sits on the dark panel, the way the reference does it.
+  const hero = all(screen.node, (child) => child.classList?.contains("hero"))[0];
+  assert.ok(hero, "the screen opens with a hero panel");
+  assert.match(textOf(hero), /Собрано дайджестов/);
+  assert.match(textOf(hero), /^.*Собрано дайджестов\s*1/s);
+  assert.match(textOf(hero), /Аналитический|стиль/);
+
   assert.match(text, /Клуб/);
   assert.match(text, /40 сообщ\./);
 
@@ -579,4 +592,41 @@ test("editing the collections keeps them valid", async () => {
   // Removing the default promotes the first survivor, so the list never has none.
   const removed = withoutEntry([{ id: 1, is_default: 1 }, { id: 2, is_default: 0 }], 1);
   assert.deepEqual(removed, [{ id: 2, is_default: 1 }]);
+});
+
+test("the digest list opens with the dark panel, and rows carry a round icon", async () => {
+  const { createDigestsScreen } = await load("screen-digests.js");
+  const screen = createDigestsScreen(context());
+
+  const hero = all(screen.node, (child) => child.classList?.contains("hero"))[0];
+  assert.ok(hero, "the screen opens with the panel");
+  assert.equal(all(hero, (c) => c.classList?.contains("hero__label"))[0].textContent, "Собрано дайджестов");
+  assert.equal(all(hero, (c) => c.classList?.contains("hero__value"))[0].textContent, "1");
+
+  // The round tinted badge is what the reference uses to open every row.
+  const rows = all(screen.node, (child) => child.classList?.contains("list__row"));
+  for (const row of rows) {
+    assert.ok(
+      all(row, (c) => c.classList?.contains("icon-badge")).length === 1,
+      "every row opens with an icon badge",
+    );
+  }
+});
+
+test("the statistics tiles and the table fit a phone", async () => {
+  const { createSettingsScreen } = await load("screen-settings.js");
+  const screen = createSettingsScreen(context());
+  // Every accordion open: the statistics live inside one.
+  for (const details of all(screen.node, (c) => c.tagName === "DETAILS")) details.open = true;
+
+  const tiles = all(screen.node, (c) => c.classList?.contains("stat"));
+  assert.ok(tiles.length >= 4, "the figures are tiles");
+  for (const tile of tiles) {
+    assert.ok(all(tile, (c) => c.classList?.contains("stat__label")).length === 1);
+    assert.ok(all(tile, (c) => c.classList?.contains("stat__value")).length === 1);
+  }
+
+  // The day table used to be 429px of columns in a 309px screen, scrolling sideways.
+  const headers = all(screen.node, (c) => c.tagName === "TH").map((th) => textOf(th));
+  assert.deepEqual(headers, ["День", "Дайдж.", "Токены", "$"]);
 });

@@ -364,25 +364,39 @@ export function createDigestsScreen(ctx) {
         onAction: () => openNewDigestSheet(ctx),
       });
 
-  // No spend line, no tariff, no token count: the list is a list. The money lives in
-  // settings, where it is looked at deliberately rather than read past every time.
-  //
-  // No heading either: the header already carries the screen name, and two identical titles
-  // stacked on each other reads as a mistake.
+  // The screen opens with the one number that matters, on the dark panel the reference
+  // uses for exactly this. No spend line, no tariff, no token count: the list is a list,
+  // and the money lives in settings where it is looked at on purpose.
+  const latest = items[0];
+  const styles = (latest?.preset_names ?? []).length || (latest?.preset_name ? 1 : 0);
+  // One style is named, several are counted: "3 стиля" says more than a list of three.
+  const styleNote =
+    styles > 1
+      ? `${styles} ${plural(styles, ["стиль", "стиля", "стилей"])}`
+      : latest?.preset_name || "";
   const node = screen([
-    el("div", { class: "row row--between" }, [
-      el("span", {
-        class: "muted small",
-        text: items.length
-          ? `Собрано: ${items.length} · смахните строку влево, чтобы удалить`
-          : "Пока пусто",
-      }),
-      button({
-        label: "Обновить",
-        icon: "refresh",
-        variant: "quiet",
-        onClick: () => ctx.refresh({ silent: true }),
-      }),
+    el("div", { class: "hero" }, [
+      el("span", { class: "hero__label", text: "Собрано дайджестов" }),
+      el("span", { class: "hero__value", text: String(items.length) }),
+      el("div", { class: "hero__row" }, [
+        el("span", {
+          class: "hero__note",
+          text: items.length
+            ? [`последний — ${periodLabel(latest)}`, styleNote].filter(Boolean).join(", ")
+            : "пока ни одного",
+        }),
+      ]),
+      el("div", { class: "row", style: "margin-top:var(--s3)" }, [
+        button({
+          label: "Обновить",
+          icon: "refresh",
+          variant: "ghost",
+          onClick: () => ctx.refresh({ silent: true }),
+        }),
+        items.length
+          ? el("span", { class: "hero__note", text: "смахните строку влево, чтобы удалить" })
+          : null,
+      ]),
     ]),
     body,
   ]);
@@ -431,6 +445,7 @@ function swipeRow(ctx, item) {
     title: item.channel_title ?? "канал",
     sub: [periodLabel(item), styleLabel(item)].filter(Boolean).join(" · "),
     meta: `${item.messages_used ?? 0} сообщ.`,
+    icon: "digests",
     chevron: true,
     onClick: () => ctx.navigate("digest", { id: item.id }),
   });
@@ -914,6 +929,7 @@ export function createDigestDetail(ctx, digestId) {
 
     return card({
       title: "Спросить у ИИ",
+      icon: "spark",
       children: [list, form],
     });
   }

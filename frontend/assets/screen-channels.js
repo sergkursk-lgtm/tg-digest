@@ -281,6 +281,8 @@ export function createChannelsScreen(ctx) {
               const channel = dialogToChannel(dialog);
               const on = selectedIds.has(String(channel.tg_id));
               return switchRow({
+                // The round icon that opens every row, tinted by what the chat is.
+                icon: group.type === "forum" ? "digests" : group.type === "group" ? "channels" : "send",
                 title: channel.title,
                 sub: [
                   channel.has_topics ? "форум" : group.title.toLowerCase(),

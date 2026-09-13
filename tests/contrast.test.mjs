@@ -75,6 +75,9 @@ const PAIRS = [
   ["--warn", "--surface", "a warning line on a card", 4.5],
   ["--danger", "--surface", "an error line on a card", 4.5],
   ["--accent", "--accent-soft", "an icon on a tinted chip", 3.0],
+  // The dark panel that carries one number per screen, and the caption beside it.
+  ["--hero-ink", "--hero", "the number on the dark panel", 4.5],
+  ["--hero-muted", "--hero", "the caption on the dark panel", 4.5],
   // A control whose boundary is the only thing identifying it must reach 3:1 (WCAG 1.4.11):
   // an input box, a switch track, an empty PIN dot.
   ["--control-edge", "--surface", "the edge of an input or switch on a card", 3.0],
@@ -112,7 +115,7 @@ test("both themes define the same tokens", () => {
   const dark = tokensFor(':root[data-theme="dark"] {');
   const missing = [...light.keys()].filter((k) => !dark.has(k));
   // Dark overrides colours only; sizing, motion and typography tokens stay shared.
-  const colourOnly = missing.filter((k) => !/^--(dur|ease|r-|s\d|tap|font|mono)/.test(k));
+  const colourOnly = missing.filter((k) => !/^--(dur|ease|r-|s\d|tap|font|mono|lift)/.test(k));
   assert.deepEqual(colourOnly, [], "dark theme is missing colour tokens");
 });
 
@@ -172,7 +175,7 @@ test("buttons stand on a wall and sink into it when pressed", () => {
   // `--lift` is both the height of the side wall and the distance a press travels, which
   // is what makes a press read as pushing the button down rather than shaking it.
   const tokens = tokensFor(":root {");
-  assert.equal(tokens.get("--lift"), "3px");
+  assert.equal(tokens.get("--lift"), "2px");
 
   for (const selector of [".btn", ".chip", ".numpad__key", ".fab"]) {
     const at = CSS.indexOf(`${selector} {`);
@@ -265,4 +268,14 @@ test("blocks on a screen are not flush against each other", () => {
   assert.notEqual(at, -1, "a screen needs a vertical rhythm");
   const rule = CSS.slice(at, CSS.indexOf("}", at));
   assert.match(rule, /margin-top:\s*var\(--s/);
+});
+
+test("a row title wraps instead of being cut", () => {
+  // With an icon badge in the row there is less width, and an ellipsised channel name is
+  // unreadable ("КУРСКИЙ БОМО…").
+  const at = CSS.indexOf(".list__title {");
+  const rule = CSS.slice(at, CSS.indexOf("}", at));
+  assert.ok(!/white-space:\s*nowrap/.test(rule), "row titles must not be nowrap");
+  assert.ok(!/text-overflow:\s*ellipsis/.test(rule), "row titles must not be ellipsised");
+  assert.match(rule, /overflow-wrap:\s*anywhere|white-space:\s*normal/);
 });

@@ -39,6 +39,14 @@ async function saveSettings(ctx, payload, message) {
   await ctx.client.writeJson(PATHS.settings, payload, message, stored?.sha ?? null);
 }
 
+/** A small tile: a muted label above a bold value. */
+function stat(label, value) {
+  return el("div", { class: "stat" }, [
+    el("span", { class: "stat__label", text: label }),
+    el("span", { class: "stat__value", text: value }),
+  ]);
+}
+
 /** A labelled value row. */
 function kv(key, value, kind = "") {
   return el("div", { class: "kv" }, [
@@ -124,6 +132,7 @@ function statusSection(ctx) {
   render(record);
   return card({
     title: "Статус",
+    icon: "check",
     children: [body, run, status],
   });
 }
@@ -142,6 +151,7 @@ function telegramSection(ctx) {
 
   return card({
     title: "Аккаунт Telegram",
+    icon: "key",
     children: [
       kv("Сессия", sessionValue, sessionReady ? (hasSessionSecret ? "ok" : "warn") : "error"),
       kv("Номер", login.phone || "не указан"),
@@ -199,6 +209,7 @@ function deepseekSection(ctx) {
 
   return card({
     title: "DeepSeek",
+    icon: "spark",
     children: [
       kv("Ключ", stored ? "сохранён в Secrets" : "не задан", stored ? "ok" : "error"),
       kv("Модель", "deepseek-flash · thinking выключен"),
@@ -317,6 +328,7 @@ function telegramAppSection(ctx) {
 
   return card({
     title: "Приложение в Telegram",
+    icon: "send",
     subtitle: "Дайджесты остаются здесь. Бот нужен как вход — кнопка открывает это приложение.",
     children: [token.field, chatId.field, discover, save, showButton, status],
   });
@@ -357,6 +369,7 @@ function appearanceSection(ctx, { onThemeChange, currentTheme }) {
 
   return card({
     title: "Оформление",
+    icon: "sun",
     children: [
       chips,
       el("p", { class: "small muted", text: "Тема хранится только в этом браузере." }),
@@ -373,9 +386,8 @@ function statisticsAccordion(ctx) {
       el("thead", {}, [
         el("tr", {}, [
           el("th", { text: "День" }),
-          el("th", { text: "Дайджестов" }),
-          el("th", { text: "Вопросов" }),
-          el("th", { text: "Токенов" }),
+          el("th", { text: "Дайдж." }),
+          el("th", { text: "Токены" }),
           el("th", { text: "$" }),
         ]),
       ]),
@@ -386,7 +398,6 @@ function statisticsAccordion(ctx) {
           el("tr", {}, [
             el("td", { text: formatDate(day.date) }),
             el("td", { text: String(day.digests) }),
-            el("td", { text: String(day.questions) }),
             el("td", { text: formatTokens(day.tokensIn + day.tokensOut) }),
             el("td", { text: formatUsd(day.costUsd) }),
           ]),
@@ -395,14 +406,22 @@ function statisticsAccordion(ctx) {
     ]),
   ]);
 
+  // Small tiles for the four figures, then the day-by-day table: a muted label above a bold
+  // value reads faster than a list of pairs, and it is what the reference does.
+  const tiles = el("div", { class: "stat-grid" }, [
+    stat("Дайджестов", String(summary.digests)),
+    stat("Вопросов к ИИ", String(summary.questions)),
+    stat("Токенов", formatTokens(summary.tokensIn + summary.tokensOut)),
+    stat("Потрачено", formatUsd(summary.costUsd)),
+  ]);
+
   const body = el("div", { class: "accordion__body" }, [
-    kv("Месяц", ctx.snapshot.month ?? "—"),
-    kv("Дайджестов", String(summary.digests)),
-    summary.questions ? kv("Вопросов к ИИ", String(summary.questions)) : null,
-    kv("Токенов на вход", formatTokens(summary.tokensIn)),
-    kv("Токенов на выход", formatTokens(summary.tokensOut)),
-    kv("Из них из кэша", formatTokens(summary.cacheHitTokens)),
-    kv("Потрачено", `${formatUsd(summary.costUsd)} из ${formatUsd(summary.limitUsd)}`),
+    el("p", { class: "small muted", text: `Месяц: ${ctx.snapshot.month ?? "—"}` }),
+    tiles,
+    el("p", {
+      class: "small muted",
+      text: `Из них из кэша ${formatTokens(summary.cacheHitTokens)} · предел ${formatUsd(summary.limitUsd)}`,
+    }),
     days.length
       ? table
       : el("p", { class: "small muted", text: "В этом месяце ещё ничего не тратилось." }),
@@ -459,7 +478,7 @@ export function createSettingsScreen(ctx) {
       }),
       templatesAccordion(ctx),
       statisticsAccordion(ctx),
-      card({ title: "Опасное", children: [forget] }),
+      card({ title: "Опасное", icon: "alert", children: [forget] }),
     ]),
   ]);
 
