@@ -186,6 +186,8 @@ test("index.html loads the vendored libraries and the module entry point", async
   assert.match(html, /<script src="\.\/vendor\/telegram-web-app\.js"><\/script>/);
   assert.match(html, /<script type="module" src="\.\/assets\/app\.js"><\/script>/);
   assert.match(html, /<link rel="stylesheet" href="\.\/assets\/design\.css" \/>/);
+  // An inline icon keeps the browser from asking for /favicon.ico, which returned 404.
+  assert.match(html, /<link\s+rel="icon"\s+href="data:image\/svg\+xml,/);
 });
 
 test("the theme is resolved before the first paint, in one place", async () => {
